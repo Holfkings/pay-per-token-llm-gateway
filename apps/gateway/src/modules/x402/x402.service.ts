@@ -5,6 +5,7 @@ import {
   generateReceipt,
   buildPaymentRequiredResponse,
   ReplayProtection,
+  type RedisLike,
 } from '@x402/x402-core';
 import { getConfig } from '@x402/config';
 import { logger } from '@x402/logger';
@@ -12,11 +13,16 @@ import { generateId } from '@x402/shared';
 import type { Quote, PaymentVerification, PaymentReceipt, RouteConfig } from '@x402/types';
 import type { PrismaClient } from '@x402/database';
 
-const replayProtection = new ReplayProtection();
-
 @Injectable()
 export class X402Service {
-  constructor(@Inject('PRISMA') private readonly prisma: PrismaClient) {}
+  private readonly replayProtection: ReplayProtection;
+
+  constructor(
+    @Inject('PRISMA') private readonly prisma: PrismaClient,
+    @Inject('REDIS') redisClient: RedisLike,
+  ) {
+    this.replayProtection = new ReplayProtection(redisClient);
+  }
 
   /**
    * Generate a quote for a given route.
@@ -62,8 +68,8 @@ export class X402Service {
   async verifyPayment(txHash: string, quote: Quote): Promise<PaymentVerification> {
     const config = getConfig();
 
-    // In-memory replay protection
-    if (replayProtection.isUsed(txHash)) {
+    // Redis-backed (or in-memory fallback) replay protection
+    if (await this.replayProtection.isUsed(txHash)) {
       return {
         verified: false,
         txHash,
@@ -87,7 +93,7 @@ export class X402Service {
     });
 
     if (verification.verified) {
-      replayProtection.markUsed(txHash, config.redis.paymentCacheTtl);
+      await this.replayProtection.markUsed(txHash, config.redis.paymentCacheTtl);
     }
 
     return verification;

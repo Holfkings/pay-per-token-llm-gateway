@@ -312,18 +312,51 @@ export function generateReceipt(verification: PaymentVerification, quote: Quote)
 // ── Replay Protection ────────────────────────
 
 /**
- * In-memory replay protection cache.
- * In production, this should be backed by Redis.
+ * Minimal interface for Redis operations needed by ReplayProtection.
+ * ioredis satisfies this interface natively.
+ */
+export interface RedisLike {
+  exists(key: string): Promise<number>;
+  set(key: string, value: string, ...args: string[]): Promise<string | null>;
+}
+
+/**
+ * Replay protection backed by Redis (when available) with in-memory fallback.
+ *
+ * When a Redis client is provided via constructor, all operations are
+ * persisted to Redis with proper TTLs. This survives server restarts
+ * and works correctly in multi-instance deployments.
+ *
+ * When no Redis client is provided, falls back to an in-memory Set
+ * (useful for development and testing).
  */
 export class ReplayProtection {
-  private usedPayments = new Set<string>();
-  private expiryTimers = new Map<string, NodeJS.Timeout>();
+  private readonly redis: RedisLike | null;
+  private readonly usedPayments = new Set<string>();
+  private readonly expiryTimers = new Map<string, NodeJS.Timeout>();
 
-  isUsed(txHash: TxHash): boolean {
+  private static readonly KEY_PREFIX = 'x402:replay:';
+
+  constructor(redis?: RedisLike) {
+    this.redis = redis ?? null;
+  }
+
+  /** Check whether a transaction hash has already been used. */
+  async isUsed(txHash: TxHash): Promise<boolean> {
+    if (this.redis) {
+      const exists = await this.redis.exists(ReplayProtection.KEY_PREFIX + txHash);
+      return exists === 1;
+    }
     return this.usedPayments.has(txHash);
   }
 
-  markUsed(txHash: TxHash, ttlSeconds = 3600): void {
+  /** Mark a transaction hash as used with a TTL. */
+  async markUsed(txHash: TxHash, ttlSeconds = 3600): Promise<void> {
+    if (this.redis) {
+      await this.redis.set(ReplayProtection.KEY_PREFIX + txHash, '1', 'EX', String(ttlSeconds));
+      return;
+    }
+
     this.usedPayments.add(txHash);
 
     const existing = this.expiryTimers.get(txHash);
@@ -338,7 +371,14 @@ export class ReplayProtection {
     );
   }
 
+  /**
+   * Number of tracked entries. Only accurate in in-memory mode;
+   * throws when Redis is active (use Redis directly for metrics).
+   */
   get size(): number {
+    if (this.redis) {
+      throw new Error('size is not available when Redis is in use');
+    }
     return this.usedPayments.size;
   }
 }

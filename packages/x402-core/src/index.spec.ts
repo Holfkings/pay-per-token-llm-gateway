@@ -4,6 +4,7 @@ import {
   calculatePrice,
   comparePayment,
   ReplayProtection,
+  type RedisLike,
 } from './index';
 
 import type { RouteConfig, PaymentAsset, StellarNetwork } from '@x402/types';
@@ -189,41 +190,64 @@ describe('comparePayment', () => {
 });
 
 describe('ReplayProtection', () => {
-  it('marks and detects used payments', () => {
+  it('marks and detects used payments (in-memory fallback)', async () => {
     const rp = new ReplayProtection();
     const txHash = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
 
-    expect(rp.isUsed(txHash)).toBe(false);
-    rp.markUsed(txHash, 60);
-    expect(rp.isUsed(txHash)).toBe(true);
+    await expect(rp.isUsed(txHash)).resolves.toBe(false);
+    await rp.markUsed(txHash, 60);
+    await expect(rp.isUsed(txHash)).resolves.toBe(true);
     expect(rp.size).toBe(1);
   });
 
-  it('tracks multiple payments', () => {
+  it('tracks multiple payments (in-memory fallback)', async () => {
     const rp = new ReplayProtection();
     const hash1 = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
     const hash2 = 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3';
 
-    rp.markUsed(hash1, 60);
-    rp.markUsed(hash2, 60);
+    await rp.markUsed(hash1, 60);
+    await rp.markUsed(hash2, 60);
 
-    expect(rp.isUsed(hash1)).toBe(true);
-    expect(rp.isUsed(hash2)).toBe(true);
+    await expect(rp.isUsed(hash1)).resolves.toBe(true);
+    await expect(rp.isUsed(hash2)).resolves.toBe(true);
     expect(rp.size).toBe(2);
   });
 
-  it('auto-expires entries', () => {
+  it('auto-expires entries (in-memory fallback)', async () => {
     jest.useFakeTimers();
     const rp = new ReplayProtection();
     const hash = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
 
-    rp.markUsed(hash, 1); // 1 second TTL
-    expect(rp.isUsed(hash)).toBe(true);
+    await rp.markUsed(hash, 1); // 1 second TTL
+    await expect(rp.isUsed(hash)).resolves.toBe(true);
 
     jest.runAllTimers();
     // After the timer fires, the entry should be removed
     expect(rp.size).toBe(0);
 
     jest.useRealTimers();
+  });
+
+  it('uses Redis when client is provided', async () => {
+    const mockRedis: RedisLike = {
+      exists: jest.fn(),
+      set: jest.fn(),
+    };
+
+    const txHash = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
+    const rp = new ReplayProtection(mockRedis);
+
+    // Not used yet
+    (mockRedis.exists as jest.Mock).mockResolvedValue(0);
+    await expect(rp.isUsed(txHash)).resolves.toBe(false);
+    expect(mockRedis.exists).toHaveBeenCalledWith('x402:replay:' + txHash);
+
+    // Mark used
+    await rp.markUsed(txHash, 120);
+    expect(mockRedis.set).toHaveBeenCalledWith('x402:replay:' + txHash, '1', 'EX', '120');
+
+    // Now reports as used
+    (mockRedis.exists as jest.Mock).mockResolvedValue(1);
+    await expect(rp.isUsed(txHash)).resolves.toBe(true);
   });
 });
