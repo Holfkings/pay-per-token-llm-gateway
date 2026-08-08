@@ -1,0 +1,13 @@
+{
+  "name": "@x402/notifications",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {},
+  "dependencies": {
+    "@x402/types": "workspace:*",
+    "@x402/logger": "workspace:*",
+    "@x402/config": "workspace:*"
+  }
+}

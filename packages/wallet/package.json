@@ -1,0 +1,14 @@
+{
+  "name": "@x402/wallet",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {},
+  "dependencies": {
+    "@x402/types": "workspace:*",
+    "@x402/config": "workspace:*",
+    "@x402/logger": "workspace:*",
+    "@stellar/stellar-sdk": "^12.0.0"
+  }
+}

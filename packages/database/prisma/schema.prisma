@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Providers (Merchants) ────────────────────
+
+model Provider {
+  id                   String   @id @default(uuid())
+  name                 String
+  walletAddress        String
+  payoutWalletAddress  String?
+  active               Boolean  @default(true)
+  metadata             Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  routes               Route[]
+  payments             Payment[]
+  apiKeys              ApiKey[]
+  sessions             Session[]
+  notifications        Notification[]
+  prepaidCredits       PrepaidCredit[]
+
+  @@index([walletAddress])
+  @@index([active])
+}
+
+// ── Protected Routes ─────────────────────────
+
+model Route {
+  id             String   @id @default(uuid())
+  providerId     String
+  path           String
+  upstreamUrl    String
+  model          String
+  pricingModel   String   @default("flat") // "flat" | "per_token"
+  flatPrice      String?
+  perTokenPrice  String?
+  acceptedAssets String[] @default(["USDC"])
+  rateLimit      Int      @default(10)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  provider       Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  payments       Payment[]
+
+  @@unique([providerId, path, model])
+  @@index([providerId])
+  @@index([active])
+}
+
+// ── Payments / Transactions ──────────────────
+
+model Payment {
+  id            String   @id @default(uuid())
+  quoteId       String
+  routeId       String
+  providerId    String
+  txHash        String?
+  payerAddress  String?
+  amount        BigInt
+  asset         String   @default("USDC")
+  status        String   @default("pending") // pending | confirmed | failed | refunded | expired
+  ledger        Int?
+  verifiedAt    DateTime?
+  receiptJson   Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  route         Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  provider      Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([txHash])
+  @@index([payerAddress])
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ── Wallets ──────────────────────────────────
+
+model Wallet {
+  id          String   @id @default(uuid())
+  address     String   @unique
+  label       String?
+  isProvider  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  prepaidCredit PrepaidCredit?
+
+  @@index([address])
+}
+
+// ── Prepaid Credits (v2) ─────────────────────
+
+model PrepaidCredit {
+  id             String   @id @default(uuid())
+  walletId       String   @unique
+  providerId     String
+  balance        BigInt    @default(0)
+  asset          String   @default("USDC")
+  lastDepositTx  String?
+  lastDepositAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  wallet         Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  provider       Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+  @@index([providerId])
+}
+
+// ── API Keys (for provider dashboard) ────────
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  providerId  String
+  keyHash     String    @unique
+  name        String
+  permissions String[]  @default(["read"])
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  provider    Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+  @@index([keyHash])
+}
+
+// ── Sessions ─────────────────────────────────
+
+model Session {
+  id          String   @id @default(uuid())
+  providerId  String
+  token       String   @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+// ── Notifications ────────────────────────────
+
+model Notification {
+  id         String   @id @default(uuid())
+  providerId String
+  event      String
+  channel    String   // "email" | "webhook" | "in_app"
+  payload    Json
+  sent       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+  @@index([sent])
+  @@index([createdAt])
+}
+
+// ── Audit Logs ───────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  entity     String
+  entityId   String?
+  actor      String?
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([action])
+  @@index([entity])
+  @@index([actor])
+  @@index([createdAt])
+}

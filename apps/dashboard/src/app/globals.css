@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 6.9%;
+    --card-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 142 76% 36%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-card border border-border rounded-xl p-6;
+  }
+
+  .stat-value {
+    @apply text-3xl font-bold tracking-tight;
+  }
+
+  .stat-label {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-green {
+    @apply bg-green-900/30 text-green-400 border border-green-800/50;
+  }
+
+  .badge-yellow {
+    @apply bg-yellow-900/30 text-yellow-400 border border-yellow-800/50;
+  }
+
+  .badge-red {
+    @apply bg-red-900/30 text-red-400 border border-red-800/50;
+  }
+
+  .badge-blue {
+    @apply bg-blue-900/30 text-blue-400 border border-blue-800/50;
+  }
+}

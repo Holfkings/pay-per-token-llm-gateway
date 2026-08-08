@@ -1,0 +1,17 @@
+{
+  "name": "x402-core",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/x402-core/src",
+  "projectType": "library",
+  "targets": {
+    "lint": { "executor": "@nx/eslint:lint" },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/packages/x402-core"],
+      "options": {
+        "jestConfig": "packages/x402-core/jest.config.ts",
+        "passWithNoTests": true
+      }
+    }
+  }
+}

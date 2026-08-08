@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "baseUrl": ".",
+    "paths": {
+      "@x402/types": ["packages/types/src/index.ts"],
+      "@x402/shared": ["packages/shared/src/index.ts"],
+      "@x402/config": ["packages/config/src/index.ts"],
+      "@x402/logger": ["packages/logger/src/index.ts"],
+      "@x402/validation": ["packages/validation/src/index.ts"],
+      "@x402/database": ["packages/database/src/index.ts"],
+      "@x402/x402-core": ["packages/x402-core/src/index.ts"],
+      "@x402/wallet": ["packages/wallet/src/index.ts"],
+      "@x402/auth": ["packages/authentication/src/index.ts"],
+      "@x402/ui": ["packages/ui/src/index.ts"],
+      "@x402/analytics": ["packages/analytics/src/index.ts"],
+      "@x402/notifications": ["packages/notifications/src/index.ts"],
+      "@x402/sdk": ["packages/sdk/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist", ".nx"]
+}

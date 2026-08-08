@@ -1,0 +1,75 @@
+'use client';
+
+import { usePathname } from 'next/navigation';
+import Link from 'next/link';
+import {
+  LayoutDashboard,
+  Route,
+  DollarSign,
+  FileText,
+  Settings,
+  Webhook,
+  Shield,
+} from 'lucide-react';
+
+const links = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/routes', label: 'Routes', icon: Route },
+  { href: '/payments', label: 'Payments', icon: DollarSign },
+  { href: '/audit', label: 'Audit Log', icon: FileText },
+  { href: '/webhooks', label: 'Webhooks', icon: Webhook },
+  { href: '/settings', label: 'Settings', icon: Settings },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+
+  return (
+    <aside className="w-64 border-r border-border bg-card/30 shrink-0 hidden lg:flex flex-col">
+      <div className="p-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center shadow-lg shadow-green-500/20">
+            <span className="text-white font-bold text-lg">x4</span>
+          </div>
+          <div>
+            <h1 className="font-bold text-lg tracking-tight">x402</h1>
+            <p className="text-xs text-muted-foreground">LLM Gateway</p>
+          </div>
+        </div>
+      </div>
+
+      <nav className="flex-1 px-3 space-y-1">
+        {links.map((link) => {
+          const isActive = pathname === link.href;
+          const Icon = link.icon;
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-green-900/20 text-green-400 border border-green-800/30'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+              }`}
+            >
+              <Icon className={`w-5 h-5 ${isActive ? 'text-green-400' : ''}`} />
+              {link.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="p-4 border-t border-border">
+        <div className="card bg-gray-900/50">
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className="w-4 h-4 text-green-400" />
+            <span className="text-xs font-semibold text-green-400">Secured by Stellar</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            All payments verified on-chain via Horizon & Soroban RPC
+          </p>
+        </div>
+      </div>
+    </aside>
+  );
+}
