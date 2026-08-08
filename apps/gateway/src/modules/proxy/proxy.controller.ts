@@ -16,6 +16,7 @@ import { RoutesService } from '../routes/routes.service';
 import { PaymentsService } from '../payments/payments.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { AdminService } from '../admin/admin.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { chatCompletionRequestSchema } from '@x402/validation';
 import { calculatePrice, comparePayment } from '@x402/x402-core';
@@ -34,6 +35,7 @@ export class ProxyController {
     private readonly paymentsService: PaymentsService,
     private readonly analyticsService: AnalyticsService,
     private readonly adminService: AdminService,
+    private readonly webhooksService: WebhooksService,
   ) {}
 
   /**
@@ -228,7 +230,6 @@ export class ProxyController {
         txHash,
         reason: verification.failureReason,
       });
-
       await this.adminService.writeAuditLog({
         action: 'payment_verification_failed',
         entity: 'payment',
@@ -240,6 +241,16 @@ export class ProxyController {
           traceId,
         },
       });
+
+      // Notify provider of verification failure
+      this.webhooksService
+        .notifyVerificationFailed(route.providerId, {
+          txHash,
+          reason: verification.failureReason || 'Unknown reason',
+        })
+        .catch((err) =>
+          logger.error('Webhook notifyVerificationFailed error', { traceId, error: String(err) }),
+        );
 
       res.status(402).json({
         status: 402,
@@ -268,6 +279,18 @@ export class ProxyController {
         traceId,
       },
     });
+
+    // Notify provider of payment received
+    this.webhooksService
+      .notifyPaymentReceived(route.providerId, {
+        txHash,
+        amount: verification.amount || '0',
+        asset: verification.asset || 'USDC',
+        payerAddress: verification.payerAddress || 'unknown',
+      })
+      .catch((err) =>
+        logger.error('Webhook notifyPaymentReceived error', { traceId, error: String(err) }),
+      );
 
     return true;
   }
