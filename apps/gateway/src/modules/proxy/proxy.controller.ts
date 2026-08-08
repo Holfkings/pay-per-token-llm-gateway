@@ -159,7 +159,7 @@ export class ProxyController {
     const payment402 = await this.x402Service.build402Response(quote);
 
     await this.paymentsService.createPendingPayment(quote, route);
-    this.analyticsService.recordUnpaidRequest(route.path, route.providerId);
+    await this.analyticsService.recordUnpaidRequest(route.path, route.providerId);
 
     await this.adminService.writeAuditLog({
       action: 'quote_generated',
@@ -314,7 +314,7 @@ export class ProxyController {
           traceId,
         );
 
-        this.analyticsService.recordPaidRequest(
+        await this.analyticsService.recordPaidRequest(
           route.path,
           route.providerId,
           payment?.payerAddress || 'unknown',
@@ -366,7 +366,7 @@ export class ProxyController {
     const tokensUsed = response.usage?.total_tokens;
     const costResult = await this.applyMeteredPricing(route, payment, tokensUsed, res, traceId);
 
-    this.analyticsService.recordPaidRequest(
+    await this.analyticsService.recordPaidRequest(
       route.path,
       route.providerId,
       payment?.payerAddress || 'unknown',

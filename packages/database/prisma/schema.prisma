@@ -172,6 +172,25 @@ model Notification {
   @@index([createdAt])
 }
 
+// ── Analytics Events ──────────────────────────
+
+model AnalyticsEvent {
+  id            String   @id @default(uuid())
+  type          String   // "request:paid" | "request:unpaid" | "payment:verified" | "payment:failed" | "request:forwarded"
+  route         String
+  providerId    String
+  callerAddress String?
+  amount        BigInt?
+  asset         String?
+  responseTime  Int?
+  createdAt     DateTime @default(now())
+
+  @@index([providerId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([providerId, type, createdAt])
+}
+
 // ── Audit Logs ───────────────────────────────
 
 model AuditLog {
