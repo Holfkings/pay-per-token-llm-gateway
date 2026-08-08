@@ -76,7 +76,8 @@ export interface BuildPaymentOptions {
 export async function buildPaymentTransaction(
   options: BuildPaymentOptions,
 ): Promise<{ txXdr: string; txHash: TxHash }> {
-  const { sourceSecret, destination, amount, asset, assetIssuer, memo, network, horizonUrl } = options;
+  const { sourceSecret, destination, amount, asset, assetIssuer, memo, network, horizonUrl } =
+    options;
 
   const sourceKeypair = Keypair.fromSecret(sourceSecret);
   const server = new Horizon.Server(horizonUrl);
@@ -168,10 +169,7 @@ export async function getAccountBalances(
 /**
  * Lookup a transaction by hash.
  */
-export async function getTransaction(
-  txHash: TxHash,
-  server: Horizon.Server,
-): Promise<any> {
+export async function getTransaction(txHash: TxHash, server: Horizon.Server): Promise<any> {
   try {
     return await server.transactions().transaction(txHash).call();
   } catch {

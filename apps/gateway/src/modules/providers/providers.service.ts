@@ -70,7 +70,10 @@ export class ProvidersService {
     return toProviderResponse(p);
   }
 
-  async update(id: string, data: Partial<Pick<Provider, 'name' | 'walletAddress' | 'active'>>): Promise<Provider> {
+  async update(
+    id: string,
+    data: Partial<Pick<Provider, 'name' | 'walletAddress' | 'active'>>,
+  ): Promise<Provider> {
     const p = await prisma.provider.update({ where: { id }, data });
     return toProviderResponse(p);
   }

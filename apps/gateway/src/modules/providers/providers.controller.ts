@@ -31,13 +31,18 @@ export class ProvidersController {
 
   @Post()
   @ApiOperation({ summary: 'Register a new provider' })
-  async create(@Body() body: { name: string; walletAddress: string; payoutWalletAddress?: string }) {
+  async create(
+    @Body() body: { name: string; walletAddress: string; payoutWalletAddress?: string },
+  ) {
     return this.providersService.create(body);
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Update provider' })
-  async update(@Param('id') id: string, @Body() body: { name?: string; walletAddress?: string; active?: boolean }) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: { name?: string; walletAddress?: string; active?: boolean },
+  ) {
     return this.providersService.update(id, body);
   }
 

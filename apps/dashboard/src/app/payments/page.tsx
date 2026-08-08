@@ -23,7 +23,9 @@ export default function PaymentsPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Payments</h1>
-          <p className="text-muted-foreground mt-1">All payment transactions processed by the gateway</p>
+          <p className="text-muted-foreground mt-1">
+            All payment transactions processed by the gateway
+          </p>
         </div>
         <div className="card">
           <p className="text-red-400">Failed to load: {(error as Error).message}</p>
@@ -38,7 +40,9 @@ export default function PaymentsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Payments</h1>
-        <p className="text-muted-foreground mt-1">All payment transactions processed by the gateway</p>
+        <p className="text-muted-foreground mt-1">
+          All payment transactions processed by the gateway
+        </p>
       </div>
 
       <div className="card overflow-hidden">
@@ -51,22 +55,33 @@ export default function PaymentsPage() {
           <p className="text-muted-foreground text-sm py-8 text-center">No payments yet</p>
         ) : (
           <>
-            {isFetching && (
-              <div className="h-0.5 bg-green-500/50 animate-pulse" />
-            )}
+            {isFetching && <div className="h-0.5 bg-green-500/50 animate-pulse" />}
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Transaction</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Payer</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Amount</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Status</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Date</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                    Transaction
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                    Payer
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                    Amount
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                    Status
+                  </th>
+                  <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                    Date
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {payments.map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-gray-800/30 transition-colors">
+                  <tr
+                    key={p.id}
+                    className="border-b border-border last:border-0 hover:bg-gray-800/30 transition-colors"
+                  >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-sm">
@@ -74,10 +89,21 @@ export default function PaymentsPage() {
                         </span>
                         {p.txHash && (
                           <>
-                            <button onClick={() => copyTxHash(p.txHash)} className="hover:text-green-400 transition-colors">
-                              {copied === p.txHash ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                            <button
+                              onClick={() => copyTxHash(p.txHash)}
+                              className="hover:text-green-400 transition-colors"
+                            >
+                              {copied === p.txHash ? (
+                                <Check className="w-3 h-3 text-green-400" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
                             </button>
-                            <a href={`https://stellar.expert/explorer/testnet/tx/${p.txHash}`} target="_blank" className="hover:text-green-400 transition-colors">
+                            <a
+                              href={`https://stellar.expert/explorer/testnet/tx/${p.txHash}`}
+                              target="_blank"
+                              className="hover:text-green-400 transition-colors"
+                            >
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           </>
@@ -85,13 +111,17 @@ export default function PaymentsPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4 font-mono text-sm">
-                      {p.payerAddress ? `${p.payerAddress.slice(0, 6)}...${p.payerAddress.slice(-4)}` : '—'}
+                      {p.payerAddress
+                        ? `${p.payerAddress.slice(0, 6)}...${p.payerAddress.slice(-4)}`
+                        : '—'}
                     </td>
                     <td className="py-3 px-4 text-sm font-mono font-medium">
                       {p.amount} {p.asset}
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`badge ${p.status === 'confirmed' ? 'badge-green' : p.status === 'pending' ? 'badge-yellow' : 'badge-red'}`}>
+                      <span
+                        className={`badge ${p.status === 'confirmed' ? 'badge-green' : p.status === 'pending' ? 'badge-yellow' : 'badge-red'}`}
+                      >
                         {p.status}
                       </span>
                     </td>

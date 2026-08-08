@@ -95,7 +95,10 @@ export function loadConfig(): GatewayConfig {
   const nodeEnv = (process.env.NODE_ENV as GatewayConfig['nodeEnv']) || 'development';
   const network = (process.env.STELLAR_NETWORK as StellarNetwork) || 'testnet';
 
-  const networkConfigs: Record<StellarNetwork, { horizon: string; rpc: string; passphrase: string }> = {
+  const networkConfigs: Record<
+    StellarNetwork,
+    { horizon: string; rpc: string; passphrase: string }
+  > = {
     testnet: {
       horizon: 'https://horizon-testnet.stellar.org',
       rpc: 'https://soroban-testnet.stellar.org',
@@ -138,7 +141,8 @@ export function loadConfig(): GatewayConfig {
 
     payment: {
       defaultAsset: 'USDC',
-      usdcIssuer: process.env.USDC_ISSUER || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      usdcIssuer:
+        process.env.USDC_ISSUER || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
       quoteExpirySeconds: parseInt(process.env.QUOTE_EXPIRY_SECONDS || '300', 10),
       minPaymentAmount: process.env.MIN_PAYMENT_AMOUNT || '10000', // 0.00001 XLM in stroops
     },

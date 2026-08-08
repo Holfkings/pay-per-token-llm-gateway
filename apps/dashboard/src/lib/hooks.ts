@@ -27,8 +27,7 @@ export const queryKeys = {
   payments: (params?: { page?: number; limit?: number; status?: string }) =>
     ['payments', params] as const,
   routes: (providerId?: string) => ['routes', providerId] as const,
-  auditLogs: (params?: { page?: number; limit?: number }) =>
-    ['auditLogs', params] as const,
+  auditLogs: (params?: { page?: number; limit?: number }) => ['auditLogs', params] as const,
 };
 
 // ── Provider ──────────────────────────────────
@@ -57,11 +56,7 @@ export function useAnalytics(providerId?: string) {
 
 // ── Payments (paginated) ──────────────────────
 
-export function usePayments(params?: {
-  page?: number;
-  limit?: number;
-  status?: string;
-}) {
+export function usePayments(params?: { page?: number; limit?: number; status?: string }) {
   return useQuery<PaginatedPayments>({
     queryKey: queryKeys.payments(params),
     queryFn: () => fetchPayments(params),
@@ -117,10 +112,7 @@ export function useDeleteRoute() {
 
 // ── Audit Logs (paginated) ────────────────────
 
-export function useAuditLogs(params?: {
-  page?: number;
-  limit?: number;
-}) {
+export function useAuditLogs(params?: { page?: number; limit?: number }) {
   return useQuery<PaginatedAuditLogs>({
     queryKey: queryKeys.auditLogs(params),
     queryFn: () => fetchAuditLogs(params),

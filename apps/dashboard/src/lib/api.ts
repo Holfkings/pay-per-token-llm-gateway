@@ -99,10 +99,7 @@ export function createRoute(data: {
   });
 }
 
-export function updateRoute(
-  id: string,
-  data: Partial<RouteResponse>,
-): Promise<RouteResponse> {
+export function updateRoute(id: string, data: Partial<RouteResponse>): Promise<RouteResponse> {
   return request<RouteResponse>(`/routes/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -136,7 +133,9 @@ export interface TimeSeriesPoint {
 }
 
 export function fetchAnalyticsSummary(providerId?: string): Promise<AnalyticsSummary> {
-  return request<AnalyticsSummary>(`/analytics/summary${providerId ? `?providerId=${providerId}` : ''}`);
+  return request<AnalyticsSummary>(
+    `/analytics/summary${providerId ? `?providerId=${providerId}` : ''}`,
+  );
 }
 
 export function fetchTimeSeries(

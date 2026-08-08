@@ -21,7 +21,10 @@ interface ChallengeStore {
 const challenges: ChallengeStore = {};
 
 /** Generate a new authentication challenge for a wallet address */
-export function createAuthChallenge(address: StellarAddress): { challengeId: string; challenge: string } {
+export function createAuthChallenge(address: StellarAddress): {
+  challengeId: string;
+  challenge: string;
+} {
   const challengeId = generateId();
   const challenge = `x402-gateway-auth-${generateId()}-${Date.now()}`;
 

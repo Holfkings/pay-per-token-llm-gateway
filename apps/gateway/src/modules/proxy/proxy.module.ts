@@ -10,7 +10,14 @@ import { AdminModule } from '../admin/admin.module';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 
 @Module({
-  imports: [X402Module, RoutesModule, ProvidersModule, PaymentsModule, AnalyticsModule, AdminModule],
+  imports: [
+    X402Module,
+    RoutesModule,
+    ProvidersModule,
+    PaymentsModule,
+    AnalyticsModule,
+    AdminModule,
+  ],
   controllers: [ProxyController],
   providers: [ProxyService, RateLimitGuard],
 })

@@ -2,7 +2,13 @@
 
 import { Plus, Trash2, Power, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { useProvider, useRoutes, useCreateRoute, useUpdateRoute, useDeleteRoute } from '@/lib/hooks';
+import {
+  useProvider,
+  useRoutes,
+  useCreateRoute,
+  useUpdateRoute,
+  useDeleteRoute,
+} from '@/lib/hooks';
 import type { RouteResponse } from '@/lib/api';
 
 export default function RoutesPage() {
@@ -90,10 +96,7 @@ export default function RoutesPage() {
 
       {/* Add Route Form */}
       {showAdd && (
-        <AddRouteForm
-          onCreated={() => setShowAdd(false)}
-          onCancel={() => setShowAdd(false)}
-        />
+        <AddRouteForm onCreated={() => setShowAdd(false)} onCancel={() => setShowAdd(false)} />
       )}
 
       <div className="card overflow-hidden">
@@ -103,26 +106,45 @@ export default function RoutesPage() {
             <p className="text-sm text-muted-foreground">Loading routes...</p>
           </div>
         ) : routeList.length === 0 ? (
-          <p className="text-muted-foreground text-sm py-8 text-center">No routes configured. Add your first route.</p>
+          <p className="text-muted-foreground text-sm py-8 text-center">
+            No routes configured. Add your first route.
+          </p>
         ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Path</th>
-                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Model</th>
-                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Pricing</th>
-                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Price</th>
-                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Status</th>
-                <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">Actions</th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                  Path
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                  Model
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                  Pricing
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                  Price
+                </th>
+                <th className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                  Status
+                </th>
+                <th className="text-right text-xs font-medium text-muted-foreground uppercase tracking-wider py-3 px-4">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {routeList.map((route) => (
-                <tr key={route.id} className="border-b border-border last:border-0 hover:bg-gray-800/30 transition-colors">
+                <tr
+                  key={route.id}
+                  className="border-b border-border last:border-0 hover:bg-gray-800/30 transition-colors"
+                >
                   <td className="py-3 px-4 font-mono text-sm">{route.path}</td>
                   <td className="py-3 px-4 text-sm">{route.model}</td>
                   <td className="py-3 px-4">
-                    <span className={`badge ${route.pricingModel === 'flat' ? 'badge-blue' : 'badge-green'}`}>
+                    <span
+                      className={`badge ${route.pricingModel === 'flat' ? 'badge-blue' : 'badge-green'}`}
+                    >
                       {route.pricingModel === 'flat' ? 'Flat' : 'Per Token'}
                     </span>
                   </td>
@@ -164,13 +186,7 @@ export default function RoutesPage() {
   );
 }
 
-function AddRouteForm({
-  onCreated,
-  onCancel,
-}: {
-  onCreated: () => void;
-  onCancel: () => void;
-}) {
+function AddRouteForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
   const { data: provider, isLoading: providerLoading, isError: providerError } = useProvider();
   const createMutation = useCreateRoute();
   const [formError, setFormError] = useState<string | null>(null);
@@ -194,8 +210,8 @@ function AddRouteForm({
         upstreamUrl: formData.get('upstreamUrl') as string,
         model: formData.get('model') as string,
         pricingModel: (formData.get('pricingModel') as 'flat' | 'per_token') || 'flat',
-        flatPrice: formData.get('flatPrice') as string || undefined,
-        perTokenPrice: formData.get('perTokenPrice') as string || undefined,
+        flatPrice: (formData.get('flatPrice') as string) || undefined,
+        perTokenPrice: (formData.get('perTokenPrice') as string) || undefined,
         acceptedAssets: ['USDC'],
         rateLimit: 10,
       },
@@ -221,7 +237,9 @@ function AddRouteForm({
     return (
       <div className="card">
         <p className="text-red-400 text-sm">Failed to load provider.</p>
-        <button onClick={onCancel} className="mt-2 text-sm text-green-400 hover:underline">Go back</button>
+        <button onClick={onCancel} className="mt-2 text-sm text-green-400 hover:underline">
+          Go back
+        </button>
       </div>
     );
   }
@@ -231,8 +249,18 @@ function AddRouteForm({
       <div className="card">
         <div className="flex items-start gap-3">
           <div className="p-2 bg-yellow-900/20 rounded-lg shrink-0 mt-0.5">
-            <svg className="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            <svg
+              className="w-5 h-5 text-yellow-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
             </svg>
           </div>
           <div>
@@ -240,13 +268,19 @@ function AddRouteForm({
             <p className="text-sm text-muted-foreground mt-1">
               You need to set up your provider profile before creating routes.
             </p>
-            <a href="/settings" className="inline-block mt-2 text-sm text-green-400 hover:underline">
+            <a
+              href="/settings"
+              className="inline-block mt-2 text-sm text-green-400 hover:underline"
+            >
               Go to Settings →
             </a>
           </div>
         </div>
         <div className="mt-4">
-          <button onClick={onCancel} className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-gray-800 transition-colors">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-gray-800 transition-colors"
+          >
             Cancel
           </button>
         </div>
@@ -261,11 +295,15 @@ function AddRouteForm({
       {/* Provider context badge */}
       <div className="flex items-center gap-2 mb-4 p-3 bg-gray-900/50 rounded-lg border border-border">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center shrink-0">
-          <span className="text-white font-bold text-xs">{provider.name.charAt(0).toUpperCase()}</span>
+          <span className="text-white font-bold text-xs">
+            {provider.name.charAt(0).toUpperCase()}
+          </span>
         </div>
         <div className="min-w-0">
           <p className="text-sm font-medium truncate">{provider.name}</p>
-          <p className="text-xs text-muted-foreground font-mono truncate">{provider.id.slice(0, 12)}...</p>
+          <p className="text-xs text-muted-foreground font-mono truncate">
+            {provider.id.slice(0, 12)}...
+          </p>
         </div>
         <span className="badge badge-green text-xs ml-auto shrink-0">Active</span>
       </div>
@@ -277,16 +315,31 @@ function AddRouteForm({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="block text-sm mb-1">Path</label>
-          <input name="path" required className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500/50" placeholder="/v1/chat/completions" />
+          <input
+            name="path"
+            required
+            className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500/50"
+            placeholder="/v1/chat/completions"
+          />
         </div>
         <div>
           <label className="block text-sm mb-1">Upstream URL</label>
-          <input name="upstreamUrl" required className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50" placeholder="https://api.openai.com/v1/chat/completions" />
+          <input
+            name="upstreamUrl"
+            required
+            className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50"
+            placeholder="https://api.openai.com/v1/chat/completions"
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm mb-1">Model</label>
-            <input name="model" required className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50" placeholder="gpt-4" />
+            <input
+              name="model"
+              required
+              className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50"
+              placeholder="gpt-4"
+            />
           </div>
           <div>
             <label className="block text-sm mb-1">Pricing Model</label>
@@ -307,7 +360,10 @@ function AddRouteForm({
           {pricingModel === 'flat' && (
             <div>
               <label className="block text-sm mb-1">
-                Flat Price <span className="text-xs text-muted-foreground">(smallest unit, e.g. 1000000 = 0.1 USDC)</span>
+                Flat Price{' '}
+                <span className="text-xs text-muted-foreground">
+                  (smallest unit, e.g. 1000000 = 0.1 USDC)
+                </span>
               </label>
               <div className="relative">
                 <input
@@ -316,7 +372,9 @@ function AddRouteForm({
                   className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500/50"
                   placeholder="1000000"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">stroops</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  stroops
+                </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Charged once per request regardless of token usage
@@ -327,7 +385,10 @@ function AddRouteForm({
           {pricingModel === 'per_token' && (
             <div>
               <label className="block text-sm mb-1">
-                Per-Token Price <span className="text-xs text-muted-foreground">(smallest unit, e.g. 100 = 0.00001 USDC per token)</span>
+                Per-Token Price{' '}
+                <span className="text-xs text-muted-foreground">
+                  (smallest unit, e.g. 100 = 0.00001 USDC per token)
+                </span>
               </label>
               <div className="relative">
                 <input
@@ -336,7 +397,9 @@ function AddRouteForm({
                   className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500/50"
                   placeholder="100"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">stroops/token</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  stroops/token
+                </span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Charged per token — total cost = tokens used × this rate
@@ -345,8 +408,18 @@ function AddRouteForm({
           )}
         </div>
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onCancel} className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-gray-800 transition-colors">Cancel</button>
-          <button type="submit" disabled={createMutation.isPending} className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={createMutation.isPending}
+            className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          >
             {createMutation.isPending ? 'Saving...' : 'Create Route'}
           </button>
         </div>

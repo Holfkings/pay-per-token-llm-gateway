@@ -6,7 +6,10 @@ import { useAuditLogs } from '@/lib/hooks';
 
 export default function AuditPage() {
   const [page, setPage] = useState(1);
-  const { data, isLoading, isError, error, isFetching, refetch } = useAuditLogs({ page, limit: 50 });
+  const { data, isLoading, isError, error, isFetching, refetch } = useAuditLogs({
+    page,
+    limit: 50,
+  });
 
   const logs = data?.data ?? [];
 
@@ -51,9 +54,9 @@ export default function AuditPage() {
             <div className="text-center max-w-sm">
               <h3 className="font-medium text-gray-300">No audit log entries yet</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Audit logs are created automatically when payments are verified,
-                requests are forwarded, and providers are registered. They&apos;ll appear here
-                once your gateway processes its first requests.
+                Audit logs are created automatically when payments are verified, requests are
+                forwarded, and providers are registered. They&apos;ll appear here once your gateway
+                processes its first requests.
               </p>
             </div>
           </div>
@@ -62,7 +65,10 @@ export default function AuditPage() {
             {isFetching && <div className="h-0.5 bg-green-500/50 animate-pulse mb-4" />}
             <div className="space-y-4">
               {logs.map((log) => (
-                <div key={log.id} className="flex items-start gap-4 pb-4 border-b border-border last:pb-0 last:border-0">
+                <div
+                  key={log.id}
+                  className="flex items-start gap-4 pb-4 border-b border-border last:pb-0 last:border-0"
+                >
                   <div className="p-2 bg-gray-800 rounded-lg shrink-0">
                     <Shield className="w-4 h-4 text-green-400" />
                   </div>
@@ -71,7 +77,9 @@ export default function AuditPage() {
                       <span className="font-medium text-sm">{log.action}</span>
                       <span className="badge badge-blue text-xs">{log.entity}</span>
                       {log.entityId && (
-                        <span className="text-xs text-muted-foreground font-mono">{log.entityId.slice(0, 8)}...</span>
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {log.entityId.slice(0, 8)}...
+                        </span>
                       )}
                     </div>
                     {log.details && (
@@ -80,9 +88,15 @@ export default function AuditPage() {
                       </p>
                     )}
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-xs text-muted-foreground">by {log.actor || 'system'}</span>
-                      <span className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</span>
-                      {log.ip && <span className="text-xs text-muted-foreground">IP: {log.ip}</span>}
+                      <span className="text-xs text-muted-foreground">
+                        by {log.actor || 'system'}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(log.createdAt).toLocaleString()}
+                      </span>
+                      {log.ip && (
+                        <span className="text-xs text-muted-foreground">IP: {log.ip}</span>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -34,7 +34,13 @@ export class AnalyticsService {
     });
   }
 
-  recordPaymentVerified(route: string, providerId: string, callerAddress: string, amount: string, asset: string) {
+  recordPaymentVerified(
+    route: string,
+    providerId: string,
+    callerAddress: string,
+    amount: string,
+    asset: string,
+  ) {
     recordEvent({ type: 'payment:verified', route, providerId, callerAddress, amount, asset });
   }
 
@@ -50,7 +56,11 @@ export class AnalyticsService {
     return getSummary(providerId);
   }
 
-  getTimeSeries(providerId: string, intervalMinutes?: number, durationHours?: number): TimeSeriesDataPoint[] {
+  getTimeSeries(
+    providerId: string,
+    intervalMinutes?: number,
+    durationHours?: number,
+  ): TimeSeriesDataPoint[] {
     return getTimeSeries(providerId, intervalMinutes, durationHours);
   }
 

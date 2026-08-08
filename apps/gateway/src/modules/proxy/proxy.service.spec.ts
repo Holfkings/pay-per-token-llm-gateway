@@ -58,13 +58,17 @@ describe('ProxyService', () => {
     it('sets SSE headers before streaming', async () => {
       const headers = new Map<string, string>();
       const mockRes = {
-        setHeader: (name: string, value: string) => { headers.set(name, value); },
+        setHeader: (name: string, value: string) => {
+          headers.set(name, value);
+        },
         flushHeaders: jest.fn(),
         write: jest.fn(),
         end: jest.fn(),
         on: jest.fn(),
         removeListener: jest.fn(),
-        get writableEnded() { return false; },
+        get writableEnded() {
+          return false;
+        },
       } as unknown as Response;
 
       const readableStream = new ReadableStream({
@@ -110,7 +114,9 @@ describe('ProxyService', () => {
         end: jest.fn(),
         on: jest.fn(),
         removeListener: jest.fn(),
-        get writableEnded() { return false; },
+        get writableEnded() {
+          return false;
+        },
       } as unknown as Response;
 
       const originalFetch = global.fetch;
@@ -142,7 +148,9 @@ describe('ProxyService', () => {
         end: jest.fn(),
         on: jest.fn(),
         removeListener: jest.fn(),
-        get writableEnded() { return false; },
+        get writableEnded() {
+          return false;
+        },
       } as unknown as Response;
 
       const originalFetch = global.fetch;
@@ -174,7 +182,9 @@ describe('ProxyService', () => {
         end: jest.fn(),
         on: jest.fn(),
         removeListener: jest.fn(),
-        get writableEnded() { return false; },
+        get writableEnded() {
+          return false;
+        },
       } as unknown as Response;
 
       const readableStream = new ReadableStream({
@@ -207,7 +217,9 @@ describe('ProxyService', () => {
           mockRes,
           undefined,
           undefined,
-          (tokens) => { doneTokens = tokens; },
+          (tokens) => {
+            doneTokens = tokens;
+          },
         );
 
         expect(doneTokens).toBe(42);

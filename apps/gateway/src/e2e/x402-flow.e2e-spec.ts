@@ -55,7 +55,12 @@ jest.mock('@x402/database', () => ({
     },
     payment: {
       create: jest.fn().mockImplementation(({ data }: any) => {
-        const record = { id: `pay-${Date.now()}`, ...data, createdAt: new Date(), updatedAt: new Date() };
+        const record = {
+          id: `pay-${Date.now()}`,
+          ...data,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
         mockPaymentStore.push(record);
         return Promise.resolve(record);
       }),
@@ -112,28 +117,58 @@ function createHorizonAndLLMFetch() {
   return jest.fn().mockImplementation(async (url: string) => {
     const u = String(url);
     if (u.includes('/transactions/') && !u.includes('/operations')) {
-      return { ok: true, status: 200, json: async () => ({
-        id: u.split('/transactions/')[1], successful: true,
-        source_account: PAYER, ledger: 12345, created_at: new Date().toISOString(),
-      })};
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: u.split('/transactions/')[1],
+          successful: true,
+          source_account: PAYER,
+          ledger: 12345,
+          created_at: new Date().toISOString(),
+        }),
+      };
     }
     if (u.includes('/operations')) {
-      return { ok: true, status: 200, json: async () => ({
-        _embedded: { records: [{
-          type: 'payment', from: PAYER, to: PW, amount: '1000000',
-          asset_code: 'USDC',
-          asset_issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
-          asset_type: 'credit_alphanum4',
-        }]},
-      })};
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          _embedded: {
+            records: [
+              {
+                type: 'payment',
+                from: PAYER,
+                to: PW,
+                amount: '1000000',
+                asset_code: 'USDC',
+                asset_issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+                asset_type: 'credit_alphanum4',
+              },
+            ],
+          },
+        }),
+      };
     }
     if (u.includes('mock-llm')) {
-      return { ok: true, status: 200, json: async () => ({
-        id: 'chatcmpl-e2e-test', object: 'chat.completion',
-        created: Math.floor(Date.now() / 1000), model: 'gpt-4',
-        choices: [{ index: 0, message: { role: 'assistant', content: 'Hello from x402 gateway E2E test!' }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 5, completion_tokens: 12, total_tokens: 17 },
-      })};
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'chatcmpl-e2e-test',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: 'gpt-4',
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content: 'Hello from x402 gateway E2E test!' },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 12, total_tokens: 17 },
+        }),
+      };
     }
     return { ok: false, status: 404, json: async () => ({}) };
   });
@@ -146,18 +181,27 @@ describe('x402 Gateway E2E', () => {
     global.fetch = createHorizonAndLLMFetch() as any;
     const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider('REDIS')
-      .useValue({ eval: jest.fn().mockResolvedValue(1), on: jest.fn(), connect: jest.fn(), ping: jest.fn().mockResolvedValue('PONG') })
+      .useValue({
+        eval: jest.fn().mockResolvedValue(1),
+        on: jest.fn(),
+        connect: jest.fn(),
+        ping: jest.fn().mockResolvedValue('PONG'),
+      })
       .overrideProvider('PRISMA')
       .useValue(mockPrisma)
       .compile();
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
     app.useGlobalFilters(new HttpExceptionFilter());
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
     await app.init();
   });
 
-  afterAll(async () => { await app.close(); });
+  afterAll(async () => {
+    await app.close();
+  });
 
   beforeEach(() => {
     resetMockStore();
@@ -218,7 +262,9 @@ describe('x402 Gateway E2E', () => {
 
   it('rejects invalid payment hash', async () => {
     const orig = global.fetch;
-    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }) as any;
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }) as any;
     try {
       await request(app.getHttpServer())
         .post('/api/v1/chat/completions')
@@ -299,19 +345,46 @@ describe('x402 Gateway E2E', () => {
     global.fetch = jest.fn().mockImplementation(async (url: string) => {
       const u = String(url);
       if (u.includes('/transactions/') && !u.includes('/operations')) {
-        return { ok: true, status: 200, json: async () => ({
-          id: streamHash, successful: true, source_account: PAYER, ledger: 12345, created_at: new Date().toISOString(),
-        })};
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: streamHash,
+            successful: true,
+            source_account: PAYER,
+            ledger: 12345,
+            created_at: new Date().toISOString(),
+          }),
+        };
       }
       if (u.includes('/operations')) {
-        return { ok: true, status: 200, json: async () => ({
-          _embedded: { records: [{ type: 'payment', from: PAYER, to: PW, amount: '1000000', asset_code: 'USDC', asset_issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', asset_type: 'credit_alphanum4' }] },
-        })};
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            _embedded: {
+              records: [
+                {
+                  type: 'payment',
+                  from: PAYER,
+                  to: PW,
+                  amount: '1000000',
+                  asset_code: 'USDC',
+                  asset_issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+                  asset_type: 'credit_alphanum4',
+                },
+              ],
+            },
+          }),
+        };
       }
       if (u.includes('mock-llm')) {
         const sse = `data: {"id":"s1","object":"chat.completion.chunk","choices":[{"delta":{"content":"Hi"},"index":0}]}\n\ndata: [DONE]\n\n`;
         const stream = new ReadableStream({
-          start(c: any) { c.enqueue(new TextEncoder().encode(sse)); c.close(); },
+          start(c: any) {
+            c.enqueue(new TextEncoder().encode(sse));
+            c.close();
+          },
         });
         return { ok: true, status: 200, body: stream };
       }

@@ -108,7 +108,9 @@ export class X402Client {
         success: true,
         stream: this.sseGenerator(firstResponse),
         receipt,
-        cost: receipt ? { amount: receipt.amount, asset: receipt.asset as PaymentAsset } : undefined,
+        cost: receipt
+          ? { amount: receipt.amount, asset: receipt.asset as PaymentAsset }
+          : undefined,
       };
     }
 
@@ -148,7 +150,10 @@ export class X402Client {
 
     const requiredAsset = options?.asset || this.config.defaultAsset || 'USDC';
     if (requiredAsset !== quote.asset) {
-      return { success: false, error: `Wrong asset: gateway requires ${quote.asset}, you're paying with ${requiredAsset}` };
+      return {
+        success: false,
+        error: `Wrong asset: gateway requires ${quote.asset}, you're paying with ${requiredAsset}`,
+      };
     }
 
     // Execute payment
@@ -171,7 +176,10 @@ export class X402Client {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      return { success: false, error: `Gateway error after payment: ${response.status} ${errorBody}` };
+      return {
+        success: false,
+        error: `Gateway error after payment: ${response.status} ${errorBody}`,
+      };
     }
 
     if (isStream) {
@@ -180,7 +188,9 @@ export class X402Client {
         success: true,
         stream: this.sseGenerator(response),
         receipt,
-        cost: receipt ? { amount: receipt.amount, asset: receipt.asset as PaymentAsset } : undefined,
+        cost: receipt
+          ? { amount: receipt.amount, asset: receipt.asset as PaymentAsset }
+          : undefined,
       } as X402StreamResult;
     }
 
@@ -203,10 +213,7 @@ export class X402Client {
    */
   private async executePayment(
     quote: Quote,
-  ): Promise<
-    | { success: true; txHash: string }
-    | { success: false; error: string }
-  > {
+  ): Promise<{ success: true; txHash: string } | { success: false; error: string }> {
     if (!this.config.secretKey) {
       if (this.config.signTransaction) {
         return {
@@ -236,7 +243,11 @@ export class X402Client {
       const server = createHorizonServer(quote.network);
       await server.submitTransaction(result.txXdr);
 
-      logger.info('Payment submitted', { txHash: result.txHash, amount: quote.amount, asset: quote.asset });
+      logger.info('Payment submitted', {
+        txHash: result.txHash,
+        amount: quote.amount,
+        asset: quote.asset,
+      });
 
       const confirmed = await this.waitForConfirmation(result.txHash, quote);
       if (!confirmed) {
@@ -273,14 +284,20 @@ export class X402Client {
 
   private getHorizonUrl(network: StellarNetwork): string {
     switch (network) {
-      case 'mainnet': return 'https://horizon.stellar.org';
-      case 'futurenet': return 'https://horizon-futurenet.stellar.org';
-      case 'testnet': default: return 'https://horizon-testnet.stellar.org';
+      case 'mainnet':
+        return 'https://horizon.stellar.org';
+      case 'futurenet':
+        return 'https://horizon-futurenet.stellar.org';
+      case 'testnet':
+      default:
+        return 'https://horizon-testnet.stellar.org';
     }
   }
 
   /** Parse SSE chunks from a fetch Response into an async generator. */
-  private async *sseGenerator(response: globalThis.Response): AsyncGenerator<ChatCompletionStreamChunk, void, unknown> {
+  private async *sseGenerator(
+    response: globalThis.Response,
+  ): AsyncGenerator<ChatCompletionStreamChunk, void, unknown> {
     if (!response.body) return;
 
     const reader = response.body.getReader();
@@ -318,7 +335,11 @@ export class X402Client {
 
   private parseReceiptHeader(header: string | null): PaymentReceipt | undefined {
     if (!header) return undefined;
-    try { return JSON.parse(header); } catch { return undefined; }
+    try {
+      return JSON.parse(header);
+    } catch {
+      return undefined;
+    }
   }
 }
 

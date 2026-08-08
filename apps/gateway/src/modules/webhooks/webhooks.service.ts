@@ -32,20 +32,14 @@ export class WebhooksService {
   /**
    * Send a verification failure notification.
    */
-  async notifyVerificationFailed(
-    providerId: string,
-    data: { txHash: string; reason: string },
-  ) {
+  async notifyVerificationFailed(providerId: string, data: { txHash: string; reason: string }) {
     return this.notify(providerId, 'verification_failed', data);
   }
 
   /**
    * Send a request forwarded notification with a webhook payload.
    */
-  async sendWebhook(
-    webhookUrl: string,
-    payload: Record<string, unknown>,
-  ): Promise<boolean> {
+  async sendWebhook(webhookUrl: string, payload: Record<string, unknown>): Promise<boolean> {
     const { WebhookNotificationHandler } = await import('@x402/notifications');
     const handler = new WebhookNotificationHandler({ retryCount: 3, retryDelayMs: 1000 });
     return handler.send(

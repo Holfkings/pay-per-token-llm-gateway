@@ -42,7 +42,7 @@ async function bootstrap() {
     .setTitle('x402 LLM Gateway')
     .setDescription(
       'Pay-per-request LLM gateway using x402 stablecoin micropayments on Stellar.\n\n' +
-      'No API keys — just pay in USDC on Stellar and get access to any LLM endpoint.',
+        'No API keys — just pay in USDC on Stellar and get access to any LLM endpoint.',
     )
     .setVersion('0.1.0')
     .addTag('x402', 'x402 payment protocol endpoints')

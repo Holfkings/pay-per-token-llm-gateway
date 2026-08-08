@@ -121,7 +121,11 @@ export class ProxyService {
     const onClientClose = () => {
       aborted = true;
       abortController.abort();
-      try { reader.cancel(); } catch { /* ignore */ }
+      try {
+        reader.cancel();
+      } catch {
+        /* ignore */
+      }
     };
     res.on('close', onClientClose);
 
@@ -130,7 +134,11 @@ export class ProxyService {
       if (!aborted && !res.writableEnded) {
         logger.warn('Stream timeout reached, closing connection', { model: request.model });
         abortController.abort();
-        try { reader.cancel(); } catch { /* ignore */ }
+        try {
+          reader.cancel();
+        } catch {
+          /* ignore */
+        }
         onClientClose();
       }
     }, streamTimeout);
@@ -164,7 +172,9 @@ export class ProxyService {
             if (parsed.usage?.total_tokens != null) {
               totalTokens = parsed.usage.total_tokens;
             }
-          } catch { /* skip unparseable lines */ }
+          } catch {
+            /* skip unparseable lines */
+          }
         }
       }
     } catch (err) {
@@ -172,9 +182,13 @@ export class ProxyService {
         logger.error('Stream forwarding error', { error: String(err) });
         if (!res.writableEnded) {
           try {
-            res.write(`data: ${JSON.stringify({ error: { message: 'Stream interrupted', type: 'gateway_error' } })}\n\n`);
+            res.write(
+              `data: ${JSON.stringify({ error: { message: 'Stream interrupted', type: 'gateway_error' } })}\n\n`,
+            );
             res.write('data: [DONE]\n\n');
-          } catch { /* client may have disconnected */ }
+          } catch {
+            /* client may have disconnected */
+          }
         }
       }
     } finally {
@@ -204,10 +218,6 @@ export class ProxyService {
   validateRequest(request: unknown): request is ChatCompletionRequest {
     if (!request || typeof request !== 'object') return false;
     const r = request as any;
-    return (
-      typeof r.model === 'string' &&
-      Array.isArray(r.messages) &&
-      r.messages.length > 0
-    );
+    return typeof r.model === 'string' && Array.isArray(r.messages) && r.messages.length > 0;
   }
 }

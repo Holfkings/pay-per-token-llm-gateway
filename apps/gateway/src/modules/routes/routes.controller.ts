@@ -1,5 +1,14 @@
 import {
-  Controller, Get, Post, Put, Delete, Param, Body, Query, HttpCode, HttpStatus,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { RoutesService } from './routes.service';
@@ -25,17 +34,20 @@ export class RoutesController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new protected route' })
-  async create(@Body() body: {
-    providerId: string;
-    path: string;
-    upstreamUrl: string;
-    model: string;
-    pricingModel: 'flat' | 'per_token';
-    flatPrice?: string;
-    perTokenPrice?: string;
-    acceptedAssets?: PaymentAsset[];
-    rateLimit?: number;
-  }) {
+  async create(
+    @Body()
+    body: {
+      providerId: string;
+      path: string;
+      upstreamUrl: string;
+      model: string;
+      pricingModel: 'flat' | 'per_token';
+      flatPrice?: string;
+      perTokenPrice?: string;
+      acceptedAssets?: PaymentAsset[];
+      rateLimit?: number;
+    },
+  ) {
     return this.routesService.create(body);
   }
 
@@ -43,7 +55,8 @@ export class RoutesController {
   @ApiOperation({ summary: 'Update a route' })
   async update(
     @Param('id') id: string,
-    @Body() body: {
+    @Body()
+    body: {
       upstreamUrl?: string;
       flatPrice?: string;
       perTokenPrice?: string;

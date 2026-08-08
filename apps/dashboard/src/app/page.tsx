@@ -44,7 +44,9 @@ export default function DashboardPage() {
           <p className="text-red-400">Failed to load analytics: {(error as Error).message}</p>
           <p className="text-muted-foreground text-sm mt-2">
             Make sure the gateway is running at{' '}
-            <code className="bg-gray-800 px-1 rounded">{process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3000'}</code>
+            <code className="bg-gray-800 px-1 rounded">
+              {process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3000'}
+            </code>
           </p>
         </div>
       </div>
@@ -82,7 +84,9 @@ export default function DashboardPage() {
               <Zap className="w-5 h-5 text-blue-400" />
             </div>
           </div>
-          <div className="stat-value">{isLoading ? '...' : (stats?.paidRequests ?? 0).toLocaleString()}</div>
+          <div className="stat-value">
+            {isLoading ? '...' : (stats?.paidRequests ?? 0).toLocaleString()}
+          </div>
           <div className="flex items-center gap-1 mt-2 text-xs text-blue-400">
             <ArrowUpRight className="w-3 h-3" /> {stats?.successRate.toFixed(1)}% success rate
           </div>
@@ -110,7 +114,9 @@ export default function DashboardPage() {
               <ArrowDownRight className="w-5 h-5 text-yellow-400" />
             </div>
           </div>
-          <div className="stat-value">{isLoading ? '...' : (stats?.unpaidRequests ?? 0).toLocaleString()}</div>
+          <div className="stat-value">
+            {isLoading ? '...' : (stats?.unpaidRequests ?? 0).toLocaleString()}
+          </div>
           <div className="flex items-center gap-1 mt-2 text-xs text-yellow-400">
             <ArrowDownRight className="w-3 h-3" /> Awaiting payment
           </div>
@@ -165,21 +171,28 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {isLoading ? (
               <p className="text-muted-foreground text-sm py-4 text-center">Loading...</p>
-            ) : stats?.topCallers?.slice(0, 5).map((caller, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center text-xs font-bold">
-                    {caller.address.slice(0, 2)}
+            ) : (
+              (stats?.topCallers?.slice(0, 5).map((caller, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-blue-500 flex items-center justify-center text-xs font-bold">
+                      {caller.address.slice(0, 2)}
+                    </div>
+                    <span className="text-sm font-mono">
+                      {caller.address.slice(0, 8)}...{caller.address.slice(-4)}
+                    </span>
                   </div>
-                  <span className="text-sm font-mono">{caller.address.slice(0, 8)}...{caller.address.slice(-4)}</span>
+                  <div className="text-sm">
+                    <span className="text-green-400 font-medium">{caller.totalSpent} USDC</span>
+                    <span className="text-muted-foreground ml-2">{caller.requestCount} req</span>
+                  </div>
                 </div>
-                <div className="text-sm">
-                  <span className="text-green-400 font-medium">{caller.totalSpent} USDC</span>
-                  <span className="text-muted-foreground ml-2">{caller.requestCount} req</span>
-                </div>
-              </div>
-            )) ?? null}
-            {!isLoading && (!stats?.topCallers?.length) && (
+              )) ?? null)
+            )}
+            {!isLoading && !stats?.topCallers?.length && (
               <p className="text-muted-foreground text-sm py-4 text-center">No callers yet</p>
             )}
           </div>
@@ -193,21 +206,26 @@ export default function DashboardPage() {
           <div className="space-y-3">
             {isLoading ? (
               <p className="text-muted-foreground text-sm py-4 text-center">Loading...</p>
-            ) : stats?.topRoutes?.slice(0, 5).map((route, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-xs font-bold">
-                    {i + 1}
+            ) : (
+              (stats?.topRoutes?.slice(0, 5).map((route, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-xs font-bold">
+                      {i + 1}
+                    </div>
+                    <span className="text-sm font-mono">{route.path}</span>
                   </div>
-                  <span className="text-sm font-mono">{route.path}</span>
+                  <div className="text-sm">
+                    <span className="text-blue-400 font-medium">{route.revenue} USDC</span>
+                    <span className="text-muted-foreground ml-2">{route.requestCount} req</span>
+                  </div>
                 </div>
-                <div className="text-sm">
-                  <span className="text-blue-400 font-medium">{route.revenue} USDC</span>
-                  <span className="text-muted-foreground ml-2">{route.requestCount} req</span>
-                </div>
-              </div>
-            )) ?? null}
-            {!isLoading && (!stats?.topRoutes?.length) && (
+              )) ?? null)
+            )}
+            {!isLoading && !stats?.topRoutes?.length && (
               <p className="text-muted-foreground text-sm py-4 text-center">No routes yet</p>
             )}
           </div>

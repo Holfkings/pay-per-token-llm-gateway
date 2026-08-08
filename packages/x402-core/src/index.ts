@@ -33,7 +33,8 @@ export interface QuoteGeneratorOptions {
 export function generateQuote(options: QuoteGeneratorOptions): Quote {
   const expiresAt = nowUnix() + options.quoteExpirySeconds;
   const quoteId = generateId();
-  const price = options.route.pricingModel === 'flat' ? options.route.flatPrice : options.route.perTokenPrice;
+  const price =
+    options.route.pricingModel === 'flat' ? options.route.flatPrice : options.route.perTokenPrice;
   const asset: PaymentAsset = options.route.acceptedAssets[0] || 'USDC';
 
   return {
@@ -60,7 +61,9 @@ export interface PaymentRequiredBuilderOptions {
 /**
  * Build a standard HTTP 402 Payment Required response.
  */
-export function buildPaymentRequiredResponse(options: PaymentRequiredBuilderOptions): PaymentRequiredResponse {
+export function buildPaymentRequiredResponse(
+  options: PaymentRequiredBuilderOptions,
+): PaymentRequiredResponse {
   const { quote, gatewayBaseUrl } = options;
 
   const instructions = [
@@ -108,7 +111,9 @@ export interface VerifyPaymentOptions {
  * 4. The payment hasn't been used before (replay protection)
  * 5. The payment was made within the quote expiry window
  */
-export async function verifyStellarPayment(options: VerifyPaymentOptions): Promise<PaymentVerification> {
+export async function verifyStellarPayment(
+  options: VerifyPaymentOptions,
+): Promise<PaymentVerification> {
   const { txHash, quote, horizonUrl, usedPayments } = options;
 
   logger.info('Verifying payment', { txHash, quoteId: quote.id });
@@ -170,15 +175,20 @@ export async function verifyStellarPayment(options: VerifyPaymentOptions): Promi
     }
 
     const opsData = (await opsResponse.json()) as Record<string, any>;
-    const paymentOps = (opsData._embedded?.records as any[])?.filter(
-      (op: any) => op.type === 'payment' || op.type === 'path_payment_strict_send' || op.type === 'path_payment_strict_receive',
-    ) || [];
+    const paymentOps =
+      (opsData._embedded?.records as any[])?.filter(
+        (op: any) =>
+          op.type === 'payment' ||
+          op.type === 'path_payment_strict_send' ||
+          op.type === 'path_payment_strict_receive',
+      ) || [];
 
     // Find a payment that matches our destination and amount
     const matchingPayment = paymentOps.find((op: any) => {
-      const assetMatches = quote.asset === 'XLM'
-        ? op.asset_type === 'native'
-        : op.asset_code === quote.asset && op.asset_issuer === quote.assetIssuer;
+      const assetMatches =
+        quote.asset === 'XLM'
+          ? op.asset_type === 'native'
+          : op.asset_code === quote.asset && op.asset_issuer === quote.assetIssuer;
 
       return op.to === quote.paymentAddress && assetMatches && op.amount === quote.amount;
     });
@@ -240,10 +250,7 @@ export async function verifyStellarPayment(options: VerifyPaymentOptions): Promi
 
 // ── Receipt Generation ───────────────────────
 
-export function generateReceipt(
-  verification: PaymentVerification,
-  quote: Quote,
-): PaymentReceipt {
+export function generateReceipt(verification: PaymentVerification, quote: Quote): PaymentReceipt {
   return {
     id: generateId(),
     quoteId: quote.id,
@@ -313,7 +320,10 @@ export interface PriceCalculationOptions {
 /**
  * Calculate the price for a request based on route pricing config.
  */
-export function calculatePrice(options: PriceCalculationOptions): { amount: string; asset: PaymentAsset } {
+export function calculatePrice(options: PriceCalculationOptions): {
+  amount: string;
+  asset: PaymentAsset;
+} {
   const { route, tokenCount } = options;
 
   if (route.pricingModel === 'flat' && route.flatPrice) {

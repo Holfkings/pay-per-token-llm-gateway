@@ -30,12 +30,14 @@ export class AdminService {
     };
   }
 
-  async getAuditLogs(options: {
-    page?: number;
-    limit?: number;
-    action?: string;
-    entity?: string;
-  } = {}): Promise<{
+  async getAuditLogs(
+    options: {
+      page?: number;
+      limit?: number;
+      action?: string;
+      entity?: string;
+    } = {},
+  ): Promise<{
     data: Array<Record<string, unknown>>;
     total: number;
     page: number;

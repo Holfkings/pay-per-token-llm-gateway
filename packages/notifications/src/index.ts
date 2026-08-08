@@ -54,9 +54,7 @@ export const inAppHandler: NotificationHandler = {
 
 /** Get in-app notifications for a provider */
 export function getInAppNotifications(providerId: string, limit = 50): InAppMessage[] {
-  return inAppQueue
-    .filter((m) => m.providerId === providerId)
-    .slice(0, limit);
+  return inAppQueue.filter((m) => m.providerId === providerId).slice(0, limit);
 }
 
 /** Mark a notification as read */
@@ -84,7 +82,10 @@ export class EmailNotificationHandler implements NotificationHandler {
 
   async send(payload: NotificationPayload): Promise<boolean> {
     if (!this.options.smtpHost) {
-      logger.warn('Email notifications not configured — skipping', payload as unknown as Record<string, unknown>);
+      logger.warn(
+        'Email notifications not configured — skipping',
+        payload as unknown as Record<string, unknown>,
+      );
       return false;
     }
 
@@ -93,7 +94,7 @@ export class EmailNotificationHandler implements NotificationHandler {
     logger.info('Email notification (placeholder)', {
       to: `provider:${payload.providerId}`,
       subject: `x402 Gateway: ${payload.event}`,
-      ...payload as unknown as Record<string, unknown>,
+      ...(payload as unknown as Record<string, unknown>),
     });
 
     return true;
@@ -114,7 +115,10 @@ export class WebhookNotificationHandler implements NotificationHandler {
 
   async send(payload: NotificationPayload, webhookUrl?: string): Promise<boolean> {
     if (!webhookUrl) {
-      logger.warn('No webhook URL configured — skipping', payload as unknown as Record<string, unknown>);
+      logger.warn(
+        'No webhook URL configured — skipping',
+        payload as unknown as Record<string, unknown>,
+      );
       return false;
     }
 

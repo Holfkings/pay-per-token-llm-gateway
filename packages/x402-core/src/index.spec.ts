@@ -51,7 +51,11 @@ describe('generateQuote', () => {
   });
 
   it('generates quote with per-token pricing', () => {
-    const route = makeRoute({ pricingModel: 'per_token', perTokenPrice: '500', flatPrice: undefined });
+    const route = makeRoute({
+      pricingModel: 'per_token',
+      perTokenPrice: '500',
+      flatPrice: undefined,
+    });
     const quote = generateQuote({
       route,
       providerAddress: 'GA5ZSE6VKPVFLEXMWJQBGHE4FJHKQIFSJMLQ7H4VFQB4UHLEH5IOVK3F',
@@ -117,7 +121,11 @@ describe('calculatePrice', () => {
   });
 
   it('calculates per-token price', () => {
-    const route = makeRoute({ perTokenPrice: '100', pricingModel: 'per_token', flatPrice: undefined });
+    const route = makeRoute({
+      perTokenPrice: '100',
+      pricingModel: 'per_token',
+      flatPrice: undefined,
+    });
     const result = calculatePrice({ route, tokenCount: 500 });
 
     expect(result.amount).toBe('50000');

@@ -95,14 +95,17 @@ export class RoutesService {
     return toRouteConfig(r);
   }
 
-  async update(id: string, data: Partial<{
-    upstreamUrl: string;
-    flatPrice: string;
-    perTokenPrice: string;
-    pricingModel: PricingModel;
-    rateLimit: number;
-    active: boolean;
-  }>): Promise<RouteConfig> {
+  async update(
+    id: string,
+    data: Partial<{
+      upstreamUrl: string;
+      flatPrice: string;
+      perTokenPrice: string;
+      pricingModel: PricingModel;
+      rateLimit: number;
+      active: boolean;
+    }>,
+  ): Promise<RouteConfig> {
     const r = await prisma.route.update({ where: { id }, data });
     return toRouteConfig(r);
   }

@@ -89,16 +89,36 @@ export class ProxyController {
       }
 
       // 5. Resolve upstream API key
-      const upstreamApiKey = process.env[`UPSTREAM_API_KEY_${route.providerId.toUpperCase().replace(/-/g, '_')}`];
+      const upstreamApiKey =
+        process.env[`UPSTREAM_API_KEY_${route.providerId.toUpperCase().replace(/-/g, '_')}`];
       const payment = await this.paymentsService.findByTxHash(txHash);
 
       if (body.stream) {
         // ── Streaming path ──
-        return this.handleStreamingForward(req, res, body, route, txHash, upstreamApiKey, payment, traceId, startTime);
+        return this.handleStreamingForward(
+          req,
+          res,
+          body,
+          route,
+          txHash,
+          upstreamApiKey,
+          payment,
+          traceId,
+          startTime,
+        );
       }
 
       // ── Non-streaming path ──
-      return this.handleNonStreamingForward(res, body, route, txHash, upstreamApiKey, payment, traceId, startTime);
+      return this.handleNonStreamingForward(
+        res,
+        body,
+        route,
+        txHash,
+        upstreamApiKey,
+        payment,
+        traceId,
+        startTime,
+      );
     } catch (error) {
       logger.error('Proxy error', { traceId, error: String(error) });
 
@@ -166,7 +186,12 @@ export class ProxyController {
     // should not grant access to model B
     if (existingPayment?.status === 'confirmed') {
       if (existingPayment.routeId !== route.id) {
-        logger.warn('Cross-route replay attempt', { traceId, txHash, existingRoute: existingPayment.routeId, requestedRoute: route.id });
+        logger.warn('Cross-route replay attempt', {
+          traceId,
+          txHash,
+          existingRoute: existingPayment.routeId,
+          requestedRoute: route.id,
+        });
         res.status(402).json({
           status: 402,
           error: 'Payment Required',
@@ -187,7 +212,11 @@ export class ProxyController {
     const verification = await this.x402Service.verifyPayment(txHash, quoteForVerification);
 
     if (!verification.verified) {
-      logger.warn('Payment verification failed', { traceId, txHash, reason: verification.failureReason });
+      logger.warn('Payment verification failed', {
+        traceId,
+        txHash,
+        reason: verification.failureReason,
+      });
 
       await this.adminService.writeAuditLog({
         action: 'payment_verification_failed',
@@ -217,7 +246,12 @@ export class ProxyController {
       entity: 'payment',
       entityId: txHash,
       actor: verification.payerAddress,
-      details: { amount: verification.amount, asset: verification.asset, route: route.path, traceId },
+      details: {
+        amount: verification.amount,
+        asset: verification.asset,
+        route: route.path,
+        traceId,
+      },
     });
 
     return true;
@@ -238,22 +272,29 @@ export class ProxyController {
     traceId: string,
     startTime: number,
   ) {
-    logger.info('Forwarding streaming request to upstream', { traceId, model: body.model, upstreamUrl: route.upstreamUrl });
+    logger.info('Forwarding streaming request to upstream', {
+      traceId,
+      model: body.model,
+      upstreamUrl: route.upstreamUrl,
+    });
 
     // Set trace ID header before streaming starts
     res.setHeader('X-Request-Trace-Id', traceId);
 
     // Add x402 receipt header if payment exists
     if (payment) {
-      res.setHeader('X-Payment-Receipt', JSON.stringify({
-        id: payment.id,
-        quoteId: payment.quoteId,
-        txHash: payment.txHash,
-        payerAddress: payment.payerAddress,
-        amount: payment.amount?.toString(),
-        asset: payment.asset,
-        status: payment.status,
-      }));
+      res.setHeader(
+        'X-Payment-Receipt',
+        JSON.stringify({
+          id: payment.id,
+          quoteId: payment.quoteId,
+          txHash: payment.txHash,
+          payerAddress: payment.payerAddress,
+          amount: payment.amount?.toString(),
+          asset: payment.asset,
+          status: payment.status,
+        }),
+      );
     }
 
     // Pipe upstream SSE stream to client
@@ -299,7 +340,11 @@ export class ProxyController {
     traceId: string,
     startTime: number,
   ) {
-    logger.info('Forwarding request to upstream', { traceId, model: body.model, upstreamUrl: route.upstreamUrl });
+    logger.info('Forwarding request to upstream', {
+      traceId,
+      model: body.model,
+      upstreamUrl: route.upstreamUrl,
+    });
 
     const { response, responseTime } = await this.proxyService.forwardRequest(
       body,
@@ -320,15 +365,18 @@ export class ProxyController {
 
     // Add x402 headers
     if (payment) {
-      res.setHeader('X-Payment-Receipt', JSON.stringify({
-        id: payment.id,
-        quoteId: payment.quoteId,
-        txHash: payment.txHash,
-        payerAddress: payment.payerAddress,
-        amount: payment.amount?.toString(),
-        asset: payment.asset,
-        status: payment.status,
-      }));
+      res.setHeader(
+        'X-Payment-Receipt',
+        JSON.stringify({
+          id: payment.id,
+          quoteId: payment.quoteId,
+          txHash: payment.txHash,
+          payerAddress: payment.payerAddress,
+          amount: payment.amount?.toString(),
+          asset: payment.asset,
+          status: payment.status,
+        }),
+      );
     }
     res.setHeader('X-Request-Trace-Id', traceId);
 

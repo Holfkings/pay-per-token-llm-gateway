@@ -49,7 +49,9 @@ export default function SettingsPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-muted-foreground mt-1">Configure your provider profile and gateway preferences</p>
+          <p className="text-muted-foreground mt-1">
+            Configure your provider profile and gateway preferences
+          </p>
         </div>
         <div className="card max-w-2xl">
           <div className="flex items-center gap-3 py-4">
@@ -66,7 +68,9 @@ export default function SettingsPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Settings</h1>
-          <p className="text-muted-foreground mt-1">Configure your provider profile and gateway preferences</p>
+          <p className="text-muted-foreground mt-1">
+            Configure your provider profile and gateway preferences
+          </p>
         </div>
         <div className="card max-w-2xl border-red-800/30 bg-red-950/10">
           <div className="flex items-start gap-3">
@@ -87,7 +91,9 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground mt-1">Configure your provider profile and gateway preferences</p>
+        <p className="text-muted-foreground mt-1">
+          Configure your provider profile and gateway preferences
+        </p>
       </div>
 
       {saveMutation.isError && (
@@ -119,7 +125,9 @@ export default function SettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Payment Wallet Address (Stellar)</label>
+            <label className="block text-sm font-medium mb-1">
+              Payment Wallet Address (Stellar)
+            </label>
             <input
               type="text"
               value={walletAddress}
@@ -132,7 +140,9 @@ export default function SettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Payout Wallet Address (optional, for multisig)</label>
+            <label className="block text-sm font-medium mb-1">
+              Payout Wallet Address (optional, for multisig)
+            </label>
             <input
               type="text"
               value={payoutWalletAddress}
@@ -148,7 +158,11 @@ export default function SettingsPage() {
             disabled={saveMutation.isPending}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50"
           >
-            {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saveMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
             {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
           </button>
         </form>
@@ -158,8 +172,11 @@ export default function SettingsPage() {
         <div className="card max-w-2xl">
           <h2 className="text-lg font-semibold mb-2">Connection Details</h2>
           <div className="text-sm text-muted-foreground space-y-1">
-            <p>Provider ID: <code className="bg-gray-800 px-1 rounded text-xs">{provider.id}</code></p>
-            <p>Status:{' '}
+            <p>
+              Provider ID: <code className="bg-gray-800 px-1 rounded text-xs">{provider.id}</code>
+            </p>
+            <p>
+              Status:{' '}
               <span className={`badge ${provider.active ? 'badge-green' : 'badge-red'}`}>
                 {provider.active ? 'Active' : 'Inactive'}
               </span>

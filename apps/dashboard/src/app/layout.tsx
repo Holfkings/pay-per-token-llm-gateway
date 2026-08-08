@@ -6,7 +6,8 @@ import { Sidebar } from '@/components/layout/sidebar';
 
 export const metadata: Metadata = {
   title: 'x402 Gateway - Provider Dashboard',
-  description: 'Manage your LLM endpoints, track revenue, and configure pricing — all through x402 micropayments on Stellar.',
+  description:
+    'Manage your LLM endpoints, track revenue, and configure pricing — all through x402 micropayments on Stellar.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -18,9 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Sidebar />
             <div className="flex-1 flex flex-col overflow-hidden">
               <Navbar />
-              <main className="flex-1 overflow-y-auto p-6">
-                {children}
-              </main>
+              <main className="flex-1 overflow-y-auto p-6">{children}</main>
             </div>
           </div>
         </Providers>

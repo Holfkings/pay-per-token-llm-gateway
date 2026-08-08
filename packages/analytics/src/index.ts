@@ -8,7 +8,8 @@ import { logger } from '@x402/logger';
 // ── In-Memory Analytics Store ────────────────
 
 export interface AnalyticsEvent {
-  type: 'request:paid' | 'request:unpaid' | 'payment:verified' | 'payment:failed' | 'request:forwarded';
+  type:
+    'request:paid' | 'request:unpaid' | 'payment:verified' | 'payment:failed' | 'request:forwarded';
   route: string;
   providerId: string;
   callerAddress?: StellarAddress;
@@ -42,9 +43,7 @@ export function recordEvent(event: Omit<AnalyticsEvent, 'timestamp'>): void {
  * Get analytics summary for a provider (or all providers).
  */
 export function getSummary(providerId?: string): AnalyticsSummary {
-  const filtered = providerId
-    ? events.filter((e) => e.providerId === providerId)
-    : events;
+  const filtered = providerId ? events.filter((e) => e.providerId === providerId) : events;
 
   const paidRequests = filtered.filter((e) => e.type === 'request:paid');
   const unpaidRequests = filtered.filter((e) => e.type === 'request:unpaid');
@@ -67,9 +66,7 @@ export function getSummary(providerId?: string): AnalyticsSummary {
     .filter((e) => e.responseTime != null)
     .map((e) => e.responseTime!);
   const avgResponseTime =
-    responseTimes.length > 0
-      ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
-      : 0;
+    responseTimes.length > 0 ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length : 0;
 
   // Success rate
   const successRate =
@@ -82,7 +79,9 @@ export function getSummary(providerId?: string): AnalyticsSummary {
     const existing = callerMap.get(e.callerAddress) || { totalSpent: BigInt(0), requestCount: 0 };
     try {
       existing.totalSpent += BigInt(e.amount || '0');
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
     existing.requestCount++;
     callerMap.set(e.callerAddress, existing);
   }
@@ -102,7 +101,9 @@ export function getSummary(providerId?: string): AnalyticsSummary {
     existing.requestCount++;
     try {
       existing.revenue += BigInt(e.amount || '0');
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
     routeMap.set(e.route, existing);
   }
   const topRoutes = Array.from(routeMap.entries())
@@ -167,7 +168,9 @@ export function getTimeSeries(
         bucket.paidRequests++;
         try {
           bucket.revenue = (BigInt(bucket.revenue) + BigInt(event.amount || '0')).toString();
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
         break;
       case 'request:unpaid':
         bucket.unpaidRequests++;

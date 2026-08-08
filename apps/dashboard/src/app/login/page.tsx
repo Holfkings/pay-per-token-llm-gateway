@@ -43,7 +43,9 @@ export default function LoginPage() {
               className="w-full flex items-center justify-between p-4 bg-card border border-border rounded-xl hover:border-green-800/50 transition-all disabled:opacity-50 group"
             >
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${wallet.color} flex items-center justify-center`}>
+                <div
+                  className={`w-10 h-10 rounded-lg bg-gradient-to-br ${wallet.color} flex items-center justify-center`}
+                >
                   <wallet.icon className="w-5 h-5 text-white" />
                 </div>
                 <div className="text-left">
@@ -58,7 +60,11 @@ export default function LoginPage() {
 
         <p className="text-xs text-muted-foreground text-center mt-6">
           Don't have a wallet?{' '}
-          <a href="https://freighter.app" target="_blank" className="text-green-400 hover:underline">
+          <a
+            href="https://freighter.app"
+            target="_blank"
+            className="text-green-400 hover:underline"
+          >
             Install Freighter
           </a>
         </p>

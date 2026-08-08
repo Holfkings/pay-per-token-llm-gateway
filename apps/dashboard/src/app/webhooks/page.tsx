@@ -35,7 +35,9 @@ export default function WebhooksPage() {
       }
     }
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const reload = () => {
@@ -100,13 +102,14 @@ export default function WebhooksPage() {
             <div className="text-center max-w-md">
               <h3 className="font-medium text-gray-300">No webhooks configured</h3>
               <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                Webhooks let your application receive real-time notifications when
-                events happen on the gateway — like payments received, requests forwarded,
-                or verification failures.
+                Webhooks let your application receive real-time notifications when events happen on
+                the gateway — like payments received, requests forwarded, or verification failures.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
                 {['payment_received', 'request_forwarded', 'verification_failed'].map((ev) => (
-                  <span key={ev} className="badge badge-green text-xs">{ev}</span>
+                  <span key={ev} className="badge badge-green text-xs">
+                    {ev}
+                  </span>
                 ))}
               </div>
               <p className="text-xs text-muted-foreground mt-3">
@@ -128,7 +131,9 @@ export default function WebhooksPage() {
                     <span className="font-mono text-sm">{wh.url}</span>
                     <div className="flex items-center gap-2 mt-1">
                       {wh.events.map((e) => (
-                        <span key={e} className="badge badge-green text-xs">{e}</span>
+                        <span key={e} className="badge badge-green text-xs">
+                          {e}
+                        </span>
                       ))}
                     </div>
                   </div>

@@ -30,10 +30,7 @@ function shouldLog(level: LogLevel): boolean {
 }
 
 function formatEntry(entry: LogEntry): string {
-  const parts = [
-    `[${entry.timestamp}]`,
-    entry.level.toUpperCase().padEnd(5),
-  ];
+  const parts = [`[${entry.timestamp}]`, entry.level.toUpperCase().padEnd(5)];
   if (entry.traceId) {
     parts.push(`[trace=${entry.traceId}]`);
   }

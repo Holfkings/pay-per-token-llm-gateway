@@ -30,9 +30,7 @@ export function Navbar() {
 
         {connected ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground font-mono">
-              GA5Z...3FL
-            </span>
+            <span className="text-sm text-muted-foreground font-mono">GA5Z...3FL</span>
             <button className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1">
               <LogOut className="w-4 h-4" /> Disconnect
             </button>

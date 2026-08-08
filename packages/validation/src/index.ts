@@ -18,7 +18,13 @@ export const stellarNetworkSchema = z.enum(['testnet', 'mainnet', 'futurenet']);
 
 export const pricingModelSchema = z.enum(['flat', 'per_token']);
 
-export const paymentStatusSchema = z.enum(['pending', 'confirmed', 'failed', 'refunded', 'expired']);
+export const paymentStatusSchema = z.enum([
+  'pending',
+  'confirmed',
+  'failed',
+  'refunded',
+  'expired',
+]);
 
 export const quoteSchema = z.object({
   id: z.string().uuid(),
@@ -53,17 +59,19 @@ export const chatMessageSchema = z.object({
   name: z.string().optional(),
 });
 
-export const chatCompletionRequestSchema = z.object({
-  model: z.string().min(1),
-  messages: z.array(chatMessageSchema).min(1),
-  temperature: z.number().min(0).max(2).optional(),
-  max_tokens: z.number().int().positive().optional(),
-  top_p: z.number().min(0).max(1).optional(),
-  frequency_penalty: z.number().min(-2).max(2).optional(),
-  presence_penalty: z.number().min(-2).max(2).optional(),
-  stream: z.boolean().optional(),
-  stop: z.union([z.string(), z.array(z.string())]).optional(),
-}).passthrough();
+export const chatCompletionRequestSchema = z
+  .object({
+    model: z.string().min(1),
+    messages: z.array(chatMessageSchema).min(1),
+    temperature: z.number().min(0).max(2).optional(),
+    max_tokens: z.number().int().positive().optional(),
+    top_p: z.number().min(0).max(1).optional(),
+    frequency_penalty: z.number().min(-2).max(2).optional(),
+    presence_penalty: z.number().min(-2).max(2).optional(),
+    stream: z.boolean().optional(),
+    stop: z.union([z.string(), z.array(z.string())]).optional(),
+  })
+  .passthrough();
 
 // ── Provider / Route ─────────────────────────
 

@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@x402/database';
 import { logger } from '@x402/logger';
-import type { Quote, PaymentVerification, PaymentReceipt, RouteConfig, PaymentRecord } from '@x402/types';
+import type {
+  Quote,
+  PaymentVerification,
+  PaymentReceipt,
+  RouteConfig,
+  PaymentRecord,
+} from '@x402/types';
 
 /** Serialized payment response with amount as string (for JSON-safe responses) */
 export interface PaymentResponse {
@@ -44,7 +50,10 @@ export class PaymentsService {
   /**
    * Confirm a payment after successful verification.
    */
-  async confirmPayment(quoteId: string, verification: PaymentVerification): Promise<PaymentReceipt> {
+  async confirmPayment(
+    quoteId: string,
+    verification: PaymentVerification,
+  ): Promise<PaymentReceipt> {
     const receipt: PaymentReceipt = {
       id: quoteId,
       quoteId,
@@ -95,13 +104,15 @@ export class PaymentsService {
   /**
    * Find all payments, with pagination and filtering.
    */
-  async findAll(options: {
-    providerId?: string;
-    status?: string;
-    payerAddress?: string;
-    page?: number;
-    limit?: number;
-  } = {}): Promise<{
+  async findAll(
+    options: {
+      providerId?: string;
+      status?: string;
+      payerAddress?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ): Promise<{
     data: PaymentResponse[];
     total: number;
     page: number;

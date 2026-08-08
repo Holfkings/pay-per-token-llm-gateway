@@ -267,24 +267,25 @@ stellar contract deploy \
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `STELLAR_NETWORK` | `testnet` | Stellar network to use |
-| `HORIZON_URL` | `https://horizon-testnet.stellar.org` | Horizon API endpoint |
-| `SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint |
-| `DATABASE_URL` | `postgresql://...` | PostgreSQL connection string |
-| `REDIS_URL` | `redis://...` | Redis connection string |
-| `PORT` | `3000` | Gateway server port |
-| `USDC_ISSUER` | `GBBD...` | Stellar USDC issuer address |
-| `JWT_SECRET` | — | Secret for session tokens |
-| `QUOTE_EXPIRY_SECONDS` | `300` | Time before quotes expire |
-| `LLM_REQUEST_TIMEOUT` | `120000` | Upstream LLM timeout (ms) |
+| Variable               | Default                               | Description                  |
+| ---------------------- | ------------------------------------- | ---------------------------- |
+| `STELLAR_NETWORK`      | `testnet`                             | Stellar network to use       |
+| `HORIZON_URL`          | `https://horizon-testnet.stellar.org` | Horizon API endpoint         |
+| `SOROBAN_RPC_URL`      | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint         |
+| `DATABASE_URL`         | `postgresql://...`                    | PostgreSQL connection string |
+| `REDIS_URL`            | `redis://...`                         | Redis connection string      |
+| `PORT`                 | `3000`                                | Gateway server port          |
+| `USDC_ISSUER`          | `GBBD...`                             | Stellar USDC issuer address  |
+| `JWT_SECRET`           | —                                     | Secret for session tokens    |
+| `QUOTE_EXPIRY_SECONDS` | `300`                                 | Time before quotes expire    |
+| `LLM_REQUEST_TIMEOUT`  | `120000`                              | Upstream LLM timeout (ms)    |
 
 ---
 
 ## Roadmap
 
 ### v1 (Current)
+
 - [x] Gateway reverse proxy with 402 flow
 - [x] Flat-rate pricing per route/model
 - [x] Stellar payment verification via Horizon
@@ -295,6 +296,7 @@ stellar contract deploy \
 - [x] Webhook notifications
 
 ### v2 (Planned)
+
 - [ ] Per-token metered pricing
 - [ ] Prepaid credit escrow contract (done — needs integration)
 - [ ] Multi-provider routing
