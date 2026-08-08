@@ -55,6 +55,8 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
+    "@types/jsonwebtoken": "^9.0.10",
+    "jsonwebtoken": "^9.0.3",
     "tslib": "^2.6.0"
   },
   "pnpm": {

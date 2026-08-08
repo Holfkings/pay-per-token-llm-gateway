@@ -1,10 +1,10 @@
 'use client';
 
-import { Bell, Settings, Wallet, LogOut } from 'lucide-react';
-import { useState } from 'react';
+import { Bell, Settings, Wallet, LogOut, Loader2 } from 'lucide-react';
+import { useAuth } from '@/lib/useAuth';
 
 export function Navbar() {
-  const [connected, setConnected] = useState(false);
+  const { address, isConnected, loading, disconnect } = useAuth();
 
   return (
     <header className="h-16 border-b border-border bg-card/50 backdrop-blur-sm flex items-center justify-between px-6 shrink-0">
@@ -28,21 +28,31 @@ export function Navbar() {
           <Settings className="w-5 h-5 text-gray-400" />
         </button>
 
-        {connected ? (
+        {loading ? (
+          <div className="flex items-center gap-2 px-3 py-2">
+            <Loader2 className="w-4 h-4 text-green-400 animate-spin" />
+            <span className="text-sm text-muted-foreground">Connecting...</span>
+          </div>
+        ) : isConnected && address ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground font-mono">GA5Z...3FL</span>
-            <button className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1">
+            <span className="text-sm text-muted-foreground font-mono">
+              {address.slice(0, 6)}...{address.slice(-4)}
+            </span>
+            <button
+              onClick={disconnect}
+              className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1 transition-colors"
+            >
               <LogOut className="w-4 h-4" /> Disconnect
             </button>
           </div>
         ) : (
-          <button
-            onClick={() => setConnected(true)}
+          <a
+            href="/login"
             className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
           >
             <Wallet className="w-4 h-4" />
             Connect Wallet
-          </button>
+          </a>
         )}
       </div>
     </header>

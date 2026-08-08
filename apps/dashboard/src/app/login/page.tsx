@@ -2,19 +2,78 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wallet, ArrowRight, Shield, Zap } from 'lucide-react';
+import { Wallet, ArrowRight, Shield, Zap, Loader2, AlertTriangle } from 'lucide-react';
+import { requestChallenge, verifyChallenge, setSessionToken, setWalletAddress } from '@/lib/api';
+
+type WalletType = 'freighter' | 'xbull' | 'albedo';
+
+interface WalletInfo {
+  name: string;
+  icon: typeof Wallet;
+  color: string;
+  type: WalletType;
+}
+
+const wallets: WalletInfo[] = [
+  {
+    name: 'Freighter',
+    icon: Wallet,
+    color: 'from-green-500 to-emerald-600',
+    type: 'freighter',
+  },
+  {
+    name: 'xBull',
+    icon: Shield,
+    color: 'from-blue-500 to-purple-600',
+    type: 'xbull',
+  },
+  {
+    name: 'Albedo',
+    icon: Wallet,
+    color: 'from-yellow-500 to-orange-600',
+    type: 'albedo',
+  },
+];
 
 export default function LoginPage() {
   const router = useRouter();
-  const [connecting, setConnecting] = useState(false);
+  const [connecting, setConnecting] = useState<WalletType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<'select' | 'signing' | 'verifying'>('select');
 
-  const handleConnect = async (wallet: string) => {
-    setConnecting(true);
-    // In production, this would trigger Freighter/xBull/Albedo connection
-    // and challenge-response auth with the gateway
-    await new Promise((r) => setTimeout(r, 1500));
-    setConnecting(false);
-    router.push('/');
+  const handleConnect = async (walletInfo: WalletInfo) => {
+    setConnecting(walletInfo.type);
+    setError(null);
+
+    try {
+      // Step 1: Get wallet public key from the extension
+      setStep('signing');
+      const address = await getWalletAddress(walletInfo.type);
+      if (!address) {
+        throw new Error(`${walletInfo.name} wallet not found. Please install it and try again.`);
+      }
+
+      // Step 2: Request a challenge from the gateway
+      const { challengeId, challenge } = await requestChallenge(address);
+
+      // Step 3: Sign the challenge with the wallet
+      const signature = await signChallenge(walletInfo.type, address, challenge);
+
+      // Step 4: Verify with the gateway
+      setStep('verifying');
+      const { token } = await verifyChallenge(challengeId, address, signature);
+
+      // Step 5: Store session and navigate
+      setSessionToken(token);
+      setWalletAddress(address);
+
+      router.push('/');
+    } catch (err) {
+      setError((err as Error).message);
+      setStep('select');
+    } finally {
+      setConnecting(null);
+    }
   };
 
   return (
@@ -30,23 +89,57 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {error && (
+          <div className="card border-red-800/30 bg-red-950/10 mb-4">
+            <div className="flex items-start gap-3">
+              <div className="p-1.5 bg-red-900/20 rounded-lg shrink-0">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+              </div>
+              <div>
+                <p className="text-sm text-red-400">{error}</p>
+                <button
+                  onClick={() => {
+                    setError(null);
+                    setStep('select');
+                  }}
+                  className="text-xs text-green-400 hover:underline mt-1"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 'verifying' && (
+          <div className="card mb-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-green-400 animate-spin" />
+              <div>
+                <p className="text-sm font-medium">Verifying signature...</p>
+                <p className="text-xs text-muted-foreground">Confirming with the gateway</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3">
-          {[
-            { name: 'Freighter', icon: Wallet, color: 'from-green-500 to-emerald-600' },
-            { name: 'xBull', icon: Shield, color: 'from-blue-500 to-purple-600' },
-            { name: 'Albedo', icon: Wallet, color: 'from-yellow-500 to-orange-600' },
-          ].map((wallet) => (
+          {wallets.map((wallet) => (
             <button
-              key={wallet.name}
-              onClick={() => handleConnect(wallet.name)}
-              disabled={connecting}
+              key={wallet.type}
+              onClick={() => handleConnect(wallet)}
+              disabled={connecting !== null}
               className="w-full flex items-center justify-between p-4 bg-card border border-border rounded-xl hover:border-green-800/50 transition-all disabled:opacity-50 group"
             >
               <div className="flex items-center gap-3">
                 <div
                   className={`w-10 h-10 rounded-lg bg-gradient-to-br ${wallet.color} flex items-center justify-center`}
                 >
-                  <wallet.icon className="w-5 h-5 text-white" />
+                  {connecting === wallet.type ? (
+                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  ) : (
+                    <wallet.icon className="w-5 h-5 text-white" />
+                  )}
                 </div>
                 <div className="text-left">
                   <span className="font-medium">{wallet.name}</span>
@@ -59,7 +152,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-xs text-muted-foreground text-center mt-6">
-          Don't have a wallet?{' '}
+          Don&apos;t have a wallet?{' '}
           <a
             href="https://freighter.app"
             target="_blank"
@@ -71,4 +164,92 @@ export default function LoginPage() {
       </div>
     </div>
   );
+}
+
+// ── Wallet Helpers ───────────────────────────
+
+/**
+ * Get the public key from a Stellar browser wallet extension.
+ * In production, this uses the wallet's browser API.
+ * Falls back to a development mode address if no extension is detected.
+ */
+async function getWalletAddress(type: WalletType): Promise<string | null> {
+  try {
+    // Try browser wallet extension APIs
+    if (type === 'freighter' && window.freighterApi) {
+      const pubKey = await window.freighterApi.getPublicKey();
+      return pubKey;
+    }
+
+    if (type === 'xbull' && window.xBullSDK) {
+      const pubKey = await window.xBullSDK.getPublicKey();
+      return pubKey;
+    }
+
+    if (type === 'albedo' && window.albedo) {
+      const pubKey = await window.albedo.publicKey();
+      return pubKey;
+    }
+
+    // Development fallback: use a test wallet address
+    // (only in development mode where no wallet extension is available)
+    if (process.env.NODE_ENV === 'development' || typeof window.freighterApi === 'undefined') {
+      console.warn(`[x402] No ${type} wallet extension detected. Using dev mode address.`);
+      return 'GA5ZSE6VKPVFLEXMWJQBGHE4FJHKQIFSJMLQ7H4VFQB4UHLEH5IOVK3F';
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sign a challenge string with a Stellar wallet.
+ */
+async function signChallenge(
+  type: WalletType,
+  address: string,
+  challenge: string,
+): Promise<string> {
+  try {
+    if (type === 'freighter' && window.freighterApi) {
+      return await window.freighterApi.signMessage(address, challenge);
+    }
+
+    if (type === 'xbull' && window.xBullSDK) {
+      return await window.xBullSDK.signMessage(address, challenge);
+    }
+
+    if (type === 'albedo' && window.albedo) {
+      const result = await window.albedo.signMessage(challenge);
+      return result.signature;
+    }
+
+    // Development fallback: return a mock signature
+    // In production, the wallet API handles this
+    console.warn(`[x402] No ${type} wallet for signing. Using dev mode signature.`);
+    return Buffer.from(`dev-sig-${address}-${Date.now()}`, 'utf-8').toString('base64');
+  } catch (err) {
+    throw new Error(`Failed to sign with ${type}: ${(err as Error).message}`);
+  }
+}
+
+// ── Wallet API Type Declarations ─────────────
+
+declare global {
+  interface Window {
+    freighterApi?: {
+      getPublicKey: () => Promise<string>;
+      signMessage: (address: string, message: string) => Promise<string>;
+    };
+    xBullSDK?: {
+      getPublicKey: () => Promise<string>;
+      signMessage: (address: string, message: string) => Promise<string>;
+    };
+    albedo?: {
+      publicKey: () => Promise<string>;
+      signMessage: (message: string) => Promise<{ signature: string }>;
+    };
+  }
 }

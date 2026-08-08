@@ -5,10 +5,53 @@
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3000';
 const BASE = `${GATEWAY_URL}/api/v1`;
 
+/** Get the stored session token */
+function getSessionToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('x402-session-token');
+}
+
+/** Store the session token */
+export function setSessionToken(token: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('x402-session-token', token);
+  }
+}
+
+/** Clear the session token */
+export function clearSessionToken(): void {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('x402-session-token');
+    localStorage.removeItem('x402-wallet-address');
+  }
+}
+
+/** Store the connected wallet address */
+export function setWalletAddress(address: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('x402-wallet-address', address);
+  }
+}
+
+/** Get the stored wallet address */
+export function getWalletAddress(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('x402-wallet-address');
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = getSessionToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options?.headers as Record<string, string>) || {}),
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
+    headers,
   });
 
   if (!res.ok) {
@@ -17,6 +60,48 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   return res.json();
+}
+
+// ── Auth ────────────────────────────────────
+
+export interface ChallengeResponse {
+  challengeId: string;
+  challenge: string;
+}
+
+export interface VerifyResponse {
+  token: string;
+}
+
+export interface SessionResponse {
+  address: string;
+  sessionId: string;
+}
+
+export function requestChallenge(address: string): Promise<ChallengeResponse> {
+  return request<ChallengeResponse>('/auth/challenge', {
+    method: 'POST',
+    body: JSON.stringify({ address }),
+  });
+}
+
+export function verifyChallenge(
+  challengeId: string,
+  address: string,
+  signature: string,
+): Promise<VerifyResponse> {
+  return request<VerifyResponse>('/auth/verify', {
+    method: 'POST',
+    body: JSON.stringify({ challengeId, address, signature }),
+  });
+}
+
+export function validateSession(): Promise<SessionResponse> {
+  return request<SessionResponse>('/auth/session');
+}
+
+export function endSession(): Promise<void> {
+  return request<void>('/auth/session', { method: 'DELETE' });
 }
 
 // ── Payments ────────────────────────────────
