@@ -5,19 +5,18 @@
   "projectType": "application",
   "targets": {
     "build": {
-      "executor": "@nx/node:build",
-      "outputs": ["{options.outputPath}"],
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/apps/gateway"],
       "options": {
-        "outputPath": "dist/apps/gateway",
-        "main": "apps/gateway/src/main.ts",
-        "tsConfig": "apps/gateway/tsconfig.app.json",
-        "assets": []
+        "command": "npx tsc -p apps/gateway/tsconfig.app.json",
+        "cwd": "{workspaceRoot}"
       }
     },
     "serve": {
-      "executor": "@nx/node:execute",
+      "executor": "nx:run-commands",
       "options": {
-        "buildTarget": "gateway:build"
+        "command": "npx tsx apps/gateway/src/main.ts",
+        "cwd": "{workspaceRoot}"
       }
     },
     "lint": {

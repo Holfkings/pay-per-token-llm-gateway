@@ -1,6 +1,6 @@
 {
   "root": true,
-  "ignorePatterns": ["**/*"],
+  "ignorePatterns": ["dist", "coverage", "node_modules", ".next", "target"],
   "plugins": ["@nx"],
   "overrides": [
     {
