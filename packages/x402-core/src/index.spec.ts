@@ -2,6 +2,7 @@ import {
   generateQuote,
   buildPaymentRequiredResponse,
   calculatePrice,
+  comparePayment,
   ReplayProtection,
 } from './index';
 
@@ -50,7 +51,7 @@ describe('generateQuote', () => {
     expect(quote.statusUrl).toContain('/api/v1/payments/');
   });
 
-  it('generates quote with per-token pricing', () => {
+  it('generates quote with per-token pricing (default token estimate)', () => {
     const route = makeRoute({
       pricingModel: 'per_token',
       perTokenPrice: '500',
@@ -65,9 +66,33 @@ describe('generateQuote', () => {
       usdcIssuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
     });
 
-    expect(quote.amount).toBe('500');
+    // 500 per token × 4096 default estimate = 2,048,000
+    expect(quote.amount).toBe('2048000');
     expect(quote.pricingModel).toBe('per_token');
     expect(quote.network).toBe('mainnet');
+    expect(quote.perTokenPrice).toBe('500');
+    expect(quote.estimatedMaxTokens).toBe(4096);
+  });
+
+  it('generates quote with per-token pricing (custom token estimate)', () => {
+    const route = makeRoute({
+      pricingModel: 'per_token',
+      perTokenPrice: '100',
+      flatPrice: undefined,
+    });
+    const quote = generateQuote({
+      route,
+      providerAddress: 'GA5ZSE6VKPVFLEXMWJQBGHE4FJHKQIFSJMLQ7H4VFQB4UHLEH5IOVK3F',
+      gatewayBaseUrl: 'http://localhost:3000',
+      network: 'testnet',
+      quoteExpirySeconds: 300,
+      usdcIssuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+      estimatedTokens: 256,
+    });
+
+    // 100 per token × 256 = 25,600
+    expect(quote.amount).toBe('25600');
+    expect(quote.estimatedMaxTokens).toBe(256);
   });
 
   it('defaults amount to 0 for missing price', () => {
@@ -137,6 +162,29 @@ describe('calculatePrice', () => {
     const result = calculatePrice({ route });
 
     expect(result.amount).toBe('0');
+  });
+});
+
+describe('comparePayment', () => {
+  it('detects exact payment', () => {
+    const result = comparePayment('1000000', '1000000');
+    expect(result.surplus).toBe('0');
+    expect(result.isOverpaid).toBe(false);
+    expect(result.isUnderpaid).toBe(false);
+  });
+
+  it('detects overpayment', () => {
+    const result = comparePayment('2000000', '1000000');
+    expect(result.surplus).toBe('1000000');
+    expect(result.isOverpaid).toBe(true);
+    expect(result.isUnderpaid).toBe(false);
+  });
+
+  it('detects underpayment', () => {
+    const result = comparePayment('500000', '1000000');
+    expect(result.surplus).toBe('-500000');
+    expect(result.isOverpaid).toBe(false);
+    expect(result.isUnderpaid).toBe(true);
   });
 });
 

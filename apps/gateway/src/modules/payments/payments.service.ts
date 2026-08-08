@@ -163,6 +163,37 @@ export class PaymentsService {
   }
 
   /**
+   * Record the actual per-token cost after the LLM response.
+   * For flat-rate routes this is a no-op (amount matches the quote).
+   * For per-token routes this updates the receipt with actual cost and token count.
+   */
+  async recordActualCost(quoteId: string, actualCost: string, tokensUsed: number): Promise<void> {
+    const payment = await prisma.payment.findFirst({ where: { quoteId } });
+    if (!payment) return;
+
+    const receiptJson = (payment.receiptJson as Record<string, unknown>) || {};
+    const updatedReceipt = {
+      ...receiptJson,
+      actualCost,
+      tokensUsed,
+    };
+
+    await prisma.payment.updateMany({
+      where: { quoteId },
+      data: {
+        receiptJson: updatedReceipt as any,
+      },
+    });
+
+    logger.info('Actual cost recorded', {
+      quoteId,
+      actualCost,
+      tokensUsed,
+      paidAmount: payment.amount.toString(),
+    });
+  }
+
+  /**
    * Get payment statistics for a provider.
    */
   async getStats(providerId: string) {

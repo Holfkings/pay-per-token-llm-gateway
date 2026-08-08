@@ -54,6 +54,10 @@ export interface Quote {
   network: StellarNetwork;
   /** URL to check payment status */
   statusUrl: string;
+  /** For per-token pricing: estimated max tokens this quote covers */
+  estimatedMaxTokens?: number;
+  /** For per-token pricing: price per token in smallest unit */
+  perTokenPrice?: string;
 }
 
 /** Payment verification result from the gateway */
@@ -86,7 +90,7 @@ export interface PaymentReceipt {
   txHash: TxHash;
   /** Payer address */
   payerAddress: StellarAddress;
-  /** Amount paid */
+  /** Amount paid (deposit for per-token) */
   amount: string;
   /** Asset */
   asset: PaymentAsset;
@@ -98,6 +102,10 @@ export interface PaymentReceipt {
   verifiedAt: string;
   /** Block/ledger number */
   ledger: number;
+  /** For per-token pricing: actual cost after response (may differ from amount) */
+  actualCost?: string;
+  /** For per-token pricing: tokens consumed */
+  tokensUsed?: number;
 }
 
 // ── Database Record Types ────────────────────

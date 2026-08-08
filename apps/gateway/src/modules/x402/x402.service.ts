@@ -21,7 +21,7 @@ export class X402Service {
   /**
    * Generate a quote for a given route.
    */
-  async generateQuoteForRoute(route: RouteConfig): Promise<Quote> {
+  async generateQuoteForRoute(route: RouteConfig, estimatedTokens?: number): Promise<Quote> {
     const config = getConfig();
 
     // Look up the provider's wallet address from the database
@@ -37,6 +37,7 @@ export class X402Service {
       network: config.stellar.network,
       quoteExpirySeconds: config.payment.quoteExpirySeconds,
       usdcIssuer: config.payment.usdcIssuer,
+      estimatedTokens,
     });
 
     logger.info('Quote generated', { quoteId: quote.id, route: route.path, providerAddress });

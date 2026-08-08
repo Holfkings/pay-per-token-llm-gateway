@@ -18,6 +18,7 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { AdminService } from '../admin/admin.service';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { chatCompletionRequestSchema } from '@x402/validation';
+import { calculatePrice, comparePayment } from '@x402/x402-core';
 import { logger } from '@x402/logger';
 import { generateId } from '@x402/shared';
 import type { ChatCompletionRequest, PaymentRecord, RouteConfig } from '@x402/types';
@@ -41,10 +42,10 @@ export class ProxyController {
    * Flow:
    * 1. Validate the request body
    * 2. Look up the route for the requested model + path
-   * 3. If no payment header: generate quote, store pending payment, return 402
+   * 3. If no payment header: generate quote (with token estimate for per-token), store pending payment, return 402
    * 4. If payment: verify on-chain, then:
    *    - stream=true → pipe SSE stream from upstream to client
-   *    - stream=false → forward, collect full response, return JSON
+   *    - stream=false → forward, collect full response, calculate actual cost for per-token, return JSON
    */
   @All('chat/completions')
   @HttpCode(HttpStatus.OK)
@@ -79,7 +80,7 @@ export class ProxyController {
       // 3. Check for payment header
       const txHash = req.headers['x-payment-hash'] as string | undefined;
       if (!txHash) {
-        return this.handle402Response(res, route, traceId, model);
+        return this.handle402Response(res, route, traceId, model, body);
       }
 
       // 4. Verify payment (includes cross-route replay protection)
@@ -94,9 +95,7 @@ export class ProxyController {
       const payment = await this.paymentsService.findByTxHash(txHash);
 
       if (body.stream) {
-        // ── Streaming path ──
         return this.handleStreamingForward(
-          req,
           res,
           body,
           route,
@@ -108,7 +107,6 @@ export class ProxyController {
         );
       }
 
-      // ── Non-streaming path ──
       return this.handleNonStreamingForward(
         res,
         body,
@@ -141,17 +139,23 @@ export class ProxyController {
   // ── Helper methods ───────────────────────────
 
   /**
-   * Send a 402 Payment Required response and record the pending payment.
+   * Send a 402 Payment Required response.
+   * For per-token routes, estimates cost based on request max_tokens.
    */
   private async handle402Response(
     res: Response,
     route: RouteConfig,
     traceId: string,
     model: string,
+    body: ChatCompletionRequest,
   ) {
     logger.info('402: Payment required', { traceId, model });
 
-    const quote = await this.x402Service.generateQuoteForRoute(route);
+    // For per-token pricing, estimate from the request's max_tokens
+    const estimatedTokens =
+      route.pricingModel === 'per_token' ? body.max_tokens || undefined : undefined;
+
+    const quote = await this.x402Service.generateQuoteForRoute(route, estimatedTokens);
     const payment402 = await this.x402Service.build402Response(quote);
 
     await this.paymentsService.createPendingPayment(quote, route);
@@ -162,7 +166,14 @@ export class ProxyController {
       entity: 'quote',
       entityId: quote.id,
       actor: 'system',
-      details: { model, route: route.path, amount: quote.amount, traceId },
+      details: {
+        model,
+        route: route.path,
+        amount: quote.amount,
+        pricingModel: route.pricingModel,
+        estimatedTokens,
+        traceId,
+      },
     });
 
     return res.status(402).json(payment402);
@@ -170,7 +181,6 @@ export class ProxyController {
 
   /**
    * Verify payment on-chain and confirm it. Returns true if verified.
-   * Sends a 402 error response directly if verification fails.
    */
   private async verifyAndConfirmPayment(
     txHash: string,
@@ -182,8 +192,6 @@ export class ProxyController {
 
     const existingPayment = await this.paymentsService.findByTxHash(txHash);
 
-    // Cross-route replay protection: a confirmed payment for model A
-    // should not grant access to model B
     if (existingPayment?.status === 'confirmed') {
       if (existingPayment.routeId !== route.id) {
         logger.warn('Cross-route replay attempt', {
@@ -200,7 +208,10 @@ export class ProxyController {
         return false;
       }
 
-      logger.info('Payment already confirmed for this route', { traceId, txHash });
+      logger.info('Payment already confirmed for this route', {
+        traceId,
+        txHash,
+      });
       return true;
     }
 
@@ -223,7 +234,11 @@ export class ProxyController {
         entity: 'payment',
         entityId: txHash,
         actor: verification.payerAddress,
-        details: { reason: verification.failureReason, route: route.path, traceId },
+        details: {
+          reason: verification.failureReason,
+          route: route.path,
+          traceId,
+        },
       });
 
       res.status(402).json({
@@ -259,10 +274,9 @@ export class ProxyController {
 
   /**
    * Forward a streaming request: pipe SSE chunks from upstream to client.
-   * Records stream duration for analytics.
+   * For per-token routes, calculates actual cost from final SSE usage chunk.
    */
   private async handleStreamingForward(
-    req: Request,
     res: Response,
     body: ChatCompletionRequest,
     route: RouteConfig,
@@ -276,42 +290,35 @@ export class ProxyController {
       traceId,
       model: body.model,
       upstreamUrl: route.upstreamUrl,
+      pricingModel: route.pricingModel,
     });
 
-    // Set trace ID header before streaming starts
     res.setHeader('X-Request-Trace-Id', traceId);
 
-    // Add x402 receipt header if payment exists
-    if (payment) {
-      res.setHeader(
-        'X-Payment-Receipt',
-        JSON.stringify({
-          id: payment.id,
-          quoteId: payment.quoteId,
-          txHash: payment.txHash,
-          payerAddress: payment.payerAddress,
-          amount: payment.amount?.toString(),
-          asset: payment.asset,
-          status: payment.status,
-        }),
-      );
-    }
-
-    // Pipe upstream SSE stream to client
+    // Pipe upstream SSE stream to client; extract tokens for per-token pricing
     await this.proxyService.forwardStreamRequest(
       body,
       route.upstreamUrl,
       res,
       apiKey,
       traceId,
-      (totalTokens) => {
-        // Analytics recorded asynchronously after stream completes
+      async (totalTokens) => {
         const streamDuration = Date.now() - startTime;
+
+        // Calculate actual cost for per-token pricing
+        const costResult = await this.applyMeteredPricing(
+          route,
+          payment,
+          totalTokens,
+          res,
+          traceId,
+        );
+
         this.analyticsService.recordPaidRequest(
           route.path,
           route.providerId,
           payment?.payerAddress || 'unknown',
-          payment?.amount?.toString() || '0',
+          costResult.actualCost,
           payment?.asset || 'USDC',
           streamDuration,
         );
@@ -329,6 +336,7 @@ export class ProxyController {
 
   /**
    * Forward a non-streaming request: collect full response and return as JSON.
+   * For per-token routes, calculates actual cost from response usage.total_tokens.
    */
   private async handleNonStreamingForward(
     res: Response,
@@ -344,6 +352,7 @@ export class ProxyController {
       traceId,
       model: body.model,
       upstreamUrl: route.upstreamUrl,
+      pricingModel: route.pricingModel,
     });
 
     const { response, responseTime } = await this.proxyService.forwardRequest(
@@ -353,17 +362,20 @@ export class ProxyController {
       traceId,
     );
 
-    // Record analytics with actual response time
+    // Calculate actual cost for per-token pricing
+    const tokensUsed = response.usage?.total_tokens;
+    const costResult = await this.applyMeteredPricing(route, payment, tokensUsed, res, traceId);
+
     this.analyticsService.recordPaidRequest(
       route.path,
       route.providerId,
       payment?.payerAddress || 'unknown',
-      payment?.amount?.toString() || '0',
+      costResult.actualCost,
       payment?.asset || 'USDC',
       responseTime,
     );
 
-    // Add x402 headers
+    // Add x402 receipt header
     if (payment) {
       res.setHeader(
         'X-Payment-Receipt',
@@ -375,6 +387,8 @@ export class ProxyController {
           amount: payment.amount?.toString(),
           asset: payment.asset,
           status: payment.status,
+          actualCost: costResult.actualCost,
+          tokensUsed: tokensUsed ?? null,
         }),
       );
     }
@@ -390,11 +404,99 @@ export class ProxyController {
         route: route.path,
         txHash,
         responseTime,
-        tokens: response.usage?.total_tokens,
+        tokens: tokensUsed,
+        actualCost: costResult.actualCost,
+        surplus: costResult.surplus,
         traceId,
       },
     });
 
     return res.json(response);
+  }
+
+  // ── Per-Token Metered Pricing ──────────────
+
+  /**
+   * Apply per-token metered pricing after receiving the LLM response.
+   *
+   * For flat-rate routes: simply returns the paid amount as the actual cost.
+   * For per-token routes:
+   *   1. Calculates actual cost from tokens used × perTokenPrice
+   *   2. Compares against the paid amount
+   *   3. Sets X-Actual-Cost, X-Tokens-Used headers
+   *   4. Records the actual cost on the payment
+   *   5. Returns the cost details for analytics
+   */
+  private async applyMeteredPricing(
+    route: RouteConfig,
+    payment: PaymentRecord | null,
+    tokensUsed: number | undefined,
+    res: Response,
+    traceId: string,
+  ): Promise<{
+    actualCost: string;
+    surplus: string;
+    isOverpaid: boolean;
+    isUnderpaid: boolean;
+  }> {
+    if (route.pricingModel !== 'per_token' || !tokensUsed) {
+      // Flat-rate or no token data: actual cost = paid amount
+      const paid = payment?.amount?.toString() || '0';
+      res.setHeader('X-Actual-Cost', paid);
+      return {
+        actualCost: paid,
+        surplus: '0',
+        isOverpaid: false,
+        isUnderpaid: false,
+      };
+    }
+
+    // Calculate actual per-token cost
+    const priceResult = calculatePrice({ route, tokenCount: tokensUsed });
+    const actualCost = priceResult.amount;
+
+    // Compare against paid amount
+    const paidAmount = payment?.amount?.toString() || actualCost;
+    const comparison = comparePayment(paidAmount, actualCost);
+
+    // Set response headers
+    res.setHeader('X-Actual-Cost', actualCost);
+    res.setHeader('X-Tokens-Used', String(tokensUsed));
+    res.setHeader('X-Paid-Amount', paidAmount);
+    if (comparison.surplus !== '0') {
+      res.setHeader('X-Surplus', comparison.surplus);
+    }
+
+    // Record actual cost on the payment
+    if (payment) {
+      await this.paymentsService.recordActualCost(payment.quoteId, actualCost, tokensUsed);
+    }
+
+    logger.info('Per-token cost calculated', {
+      traceId,
+      tokensUsed,
+      actualCost,
+      paidAmount,
+      surplus: comparison.surplus,
+      isOverpaid: comparison.isOverpaid,
+      isUnderpaid: comparison.isUnderpaid,
+    });
+
+    if (comparison.isUnderpaid) {
+      logger.warn('Per-token underpayment detected', {
+        traceId,
+        tokensUsed,
+        actualCost,
+        paidAmount,
+        shortfall: comparison.surplus,
+      });
+    }
+
+    return {
+      actualCost,
+      surplus: comparison.surplus,
+      isOverpaid: comparison.isOverpaid,
+      isUnderpaid: comparison.isUnderpaid,
+    };
   }
 }
