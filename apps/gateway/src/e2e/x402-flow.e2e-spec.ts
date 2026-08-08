@@ -86,6 +86,14 @@ jest.mock('@x402/database', () => ({
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn().mockResolvedValue({}),
     },
+    analyticsEvent: {
+      create: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0n }, _avg: { responseTime: 0 } }),
+      groupBy: jest.fn().mockResolvedValue([]),
+    },
   },
   Prisma: {},
 }));
