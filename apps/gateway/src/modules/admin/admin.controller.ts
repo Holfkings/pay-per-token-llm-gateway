@@ -1,6 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 @ApiTags('admin')
 @Controller('admin')
@@ -20,6 +21,7 @@ export class AdminController {
   }
 
   @Get('audit')
+  @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Get audit logs' })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })

@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 @ApiTags('payments')
 @Controller('payments')
@@ -8,6 +9,7 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Get()
+  @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'List all payments' })
   @ApiQuery({ name: 'providerId', required: false })
   @ApiQuery({ name: 'status', required: false })

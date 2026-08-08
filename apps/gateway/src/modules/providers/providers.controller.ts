@@ -8,12 +8,15 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ProvidersService } from './providers.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 @ApiTags('providers')
 @Controller('providers')
+@UseGuards(AuthGuard)
 export class ProvidersController {
   constructor(private readonly providersService: ProvidersService) {}
 

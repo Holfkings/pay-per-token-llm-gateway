@@ -9,13 +9,16 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { RoutesService } from './routes.service';
+import { AuthGuard } from '../auth/auth.guard';
 import type { PaymentAsset } from '@x402/types';
 
 @ApiTags('routes')
 @Controller('routes')
+@UseGuards(AuthGuard)
 export class RoutesController {
   constructor(private readonly routesService: RoutesService) {}
 

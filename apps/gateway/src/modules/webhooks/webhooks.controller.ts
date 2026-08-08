@@ -1,9 +1,11 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { WebhooksService } from './webhooks.service';
+import { AuthGuard } from '../auth/auth.guard';
 
 @ApiTags('webhooks')
 @Controller('webhooks')
+@UseGuards(AuthGuard)
 export class WebhooksController {
   constructor(private readonly webhooksService: WebhooksService) {}
 
