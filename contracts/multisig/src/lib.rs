@@ -148,7 +148,7 @@ mod test {
 
         let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
-        let contract_id = env.register_contract(None, Multisig);
+        let contract_id = env.register(Multisig, ());
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &1u32, &token);
 
@@ -167,7 +167,7 @@ mod test {
 
         let signers = Vec::from_array(&env, [signer1.clone()]);
 
-        let contract_id = env.register_contract(None, Multisig);
+        let contract_id = env.register(Multisig, ());
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &0u32, &token);
     }
@@ -181,7 +181,7 @@ mod test {
 
         let signers = Vec::from_array(&env, [signer1.clone()]);
 
-        let contract_id = env.register_contract(None, Multisig);
+        let contract_id = env.register(Multisig, ());
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &5u32, &token);
     }
@@ -196,7 +196,7 @@ mod test {
 
         let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
-        let contract_id = env.register_contract(None, Multisig);
+        let contract_id = env.register(Multisig, ());
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &2u32, &token);
 
@@ -223,7 +223,7 @@ mod test {
 
         let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
-        let contract_id = env.register_contract(None, Multisig);
+        let contract_id = env.register(Multisig, ());
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &2u32, &token);
 
@@ -246,7 +246,7 @@ mod test {
 
         let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
-        let contract_id = env.register_contract(None, Multisig);
+        let contract_id = env.register(Multisig, ());
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &2u32, &token);
 
@@ -284,7 +284,7 @@ mod test {
 
         let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
-        let contract_id = env.register_contract(None, Multisig);
+        let contract_id = env.register(Multisig, ());
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &2u32, &token);
 
@@ -311,7 +311,7 @@ mod test {
 
         let signers = Vec::from_array(&env, [signer1.clone()]);
 
-        let contract_id = env.register_contract(None, Multisig);
+        let contract_id = env.register(Multisig, ());
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &1u32, &token);
 

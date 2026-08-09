@@ -1,12 +1,15 @@
 //! x402 Payment Verifier — Soroban Smart Contract
 //!
-//! This contract records verified x402 payments on-chain and emits events
-//! that the gateway listens to for off-chain processing.
+//! Records verified x402 payments on-chain. Uses per-entry instance
+//! storage (O(1) writes) instead of a growing Vec to keep gas costs
+//! constant regardless of payment history size.
 //!
-//! Security considerations:
-//! - Only the gateway admin can record payments
-//! - Payments are never double-counted (deduplication by payment hash)
-//! - Events can be consumed by external indexers
+//! Storage layout:
+//!   CONFIG            → ContractConfig
+//!   PAYMENT_COUNT     → u32
+//!   (PAYMENT, idx)    → Payment          (indexed by position)
+//!   (TX_INDEX, hash)  → u32              (tx_hash → position lookup)
+//!   (USED_TX, hash)   → bool             (replay protection)
 
 #![no_std]
 
@@ -19,46 +22,35 @@ use soroban_sdk::{
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
 pub struct Payment {
-    /// Transaction hash on Stellar
     pub tx_hash: String,
-    /// Payer's Stellar address
     pub payer: Address,
-    /// Destination address (provider)
     pub payee: Address,
-    /// Amount in stroops (smallest unit)
     pub amount: i128,
-    /// Asset code (e.g., "USDC")
     pub asset: String,
-    /// Timestamp of the payment
     pub timestamp: u64,
-    /// Associated quote ID
     pub quote_id: String,
-    /// Whether this payment has been verified
     pub verified: bool,
 }
 
 #[contracttype]
 #[derive(Clone)]
 pub struct ContractConfig {
-    /// The admin address authorized to record payments
     pub admin: Address,
-    /// Whether the contract is paused
     pub paused: bool,
 }
 
 // ── Storage Keys ─────────────────────────────
 
 const CONFIG_KEY: Symbol = symbol_short!("CONFIG");
-const PAYMENTS_KEY: Symbol = symbol_short!("PAYMENTS");
+const PAYMENT_KEY: Symbol = symbol_short!("PAYMENT");
+const TX_INDEX_KEY: Symbol = symbol_short!("TX_IDX");
 const USED_TX_KEY: Symbol = symbol_short!("USED_TX");
+const PAYMENT_COUNT_KEY: Symbol = symbol_short!("PAY_CNT");
 
 // ── Events ───────────────────────────────────
 
 fn emit_payment_verified(env: &Env, payment: &Payment) {
-    let topics = (
-        symbol_short!("pay_verif"),
-        payment.tx_hash.clone(),
-    );
+    let topics = (symbol_short!("pay_verif"), payment.tx_hash.clone());
     env.events().publish(
         topics,
         (
@@ -73,7 +65,7 @@ fn emit_payment_verified(env: &Env, payment: &Payment) {
 }
 
 fn emit_payment_refunded(env: &Env, tx_hash: String, reason: String) {
-    let topics = (        symbol_short!("pay_refun"), tx_hash);
+    let topics = (symbol_short!("pay_refun"), tx_hash);
     env.events().publish(topics, reason);
 }
 
@@ -84,24 +76,19 @@ pub struct PaymentVerifier;
 
 #[contractimpl]
 impl PaymentVerifier {
-    /// Initialize the contract with an admin address.
     pub fn init(env: Env, admin: Address) {
         if env.storage().instance().has(&CONFIG_KEY) {
             panic!("Contract already initialized");
         }
-
         let config = ContractConfig {
             admin,
             paused: false,
         };
         env.storage().instance().set(&CONFIG_KEY, &config);
-
-        // Initialize payment storage (Map style)
-        let payments: Vec<Payment> = Vec::new(&env);
-        env.storage().instance().set(&PAYMENTS_KEY, &payments);
+        env.storage().instance().set(&PAYMENT_COUNT_KEY, &0u32);
     }
 
-    /// Record a verified payment. Only callable by admin.
+    /// Record a verified payment. O(1) storage — constant gas cost.
     pub fn record_payment(
         env: Env,
         tx_hash: String,
@@ -112,21 +99,24 @@ impl PaymentVerifier {
         timestamp: u64,
         quote_id: String,
     ) {
-        // Auth check
         let config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
         config.admin.require_auth();
         if config.paused {
             panic!("Contract is paused");
         }
 
-        // Deduplication check
+        // Deduplication — O(1) lookup
         let used_key = (USED_TX_KEY, tx_hash.clone());
         if env.storage().instance().has(&used_key) {
             panic!("Payment already recorded (replay protection)");
         }
         env.storage().instance().set(&used_key, &true);
 
-        // Record payment
+        // Get next index
+        let count: u32 = env.storage().instance().get(&PAYMENT_COUNT_KEY).unwrap();
+        let idx = count;
+
+        // Store payment at (PAYMENT, idx) — O(1) write
         let payment = Payment {
             tx_hash: tx_hash.clone(),
             payer: payer.clone(),
@@ -137,63 +127,61 @@ impl PaymentVerifier {
             quote_id: quote_id.clone(),
             verified: true,
         };
+        let payment_entry = (PAYMENT_KEY, idx);
+        env.storage().instance().set(&payment_entry, &payment);
 
-        let mut payments: Vec<Payment> = env.storage().instance().get(&PAYMENTS_KEY).unwrap();
-        payments.push_back(payment.clone());
-        env.storage().instance().set(&PAYMENTS_KEY, &payments);
+        // Store tx_hash → index mapping — O(1) write
+        let tx_entry = (TX_INDEX_KEY, tx_hash);
+        env.storage().instance().set(&tx_entry, &idx);
 
-        // Emit event
+        // Update count — O(1) write
+        env.storage().instance().set(&PAYMENT_COUNT_KEY, &(count + 1));
+
         emit_payment_verified(&env, &payment);
     }
 
-    /// Check if a transaction hash has been used.
+    /// O(1) check if a payment hash has been used.
     pub fn is_payment_used(env: Env, tx_hash: String) -> bool {
         let used_key = (USED_TX_KEY, tx_hash);
         env.storage().instance().has(&used_key)
     }
 
-    /// Get all recorded payments (paginated).
+    /// Get paginated payments. O(limit) reads — constant gas regardless of
+    /// total payment count.
     pub fn get_payments(env: Env, offset: u32, limit: u32) -> Vec<Payment> {
-        let payments: Vec<Payment> = env.storage().instance().get(&PAYMENTS_KEY).unwrap();
+        let count: u32 = env.storage().instance().get(&PAYMENT_COUNT_KEY).unwrap();
         let mut result = Vec::new(&env);
-        let start = offset as u32;
-        let end = (offset + limit).min(payments.len() as u32);
+        let end = (offset + limit).min(count);
 
-        for i in start..end {
-            if let Some(payment) = payments.get(i) {
+        for i in offset..end {
+            let payment_entry = (PAYMENT_KEY, i);
+            if let Some(payment) = env.storage().instance().get(&payment_entry) {
                 result.push_back(payment);
             }
         }
-
         result
     }
 
-    /// Get a specific payment by transaction hash.
+    /// O(1) lookup by transaction hash.
     pub fn get_payment(env: Env, tx_hash: String) -> Option<Payment> {
-        let payments: Vec<Payment> = env.storage().instance().get(&PAYMENTS_KEY).unwrap();
-        for payment in payments.iter() {
-            if payment.tx_hash == tx_hash {
-                return Some(payment);
-            }
-        }
-        None
+        let tx_entry = (TX_INDEX_KEY, tx_hash);
+        let idx: u32 = env.storage().instance().get(&tx_entry)?;
+        let payment_entry = (PAYMENT_KEY, idx);
+        env.storage().instance().get(&payment_entry)
     }
 
     /// Mark a payment as refunded. Only callable by admin.
     pub fn refund_payment(env: Env, tx_hash: String, reason: String) {
         let config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
         config.admin.require_auth();
-
         emit_payment_refunded(&env, tx_hash, reason);
     }
 
-    /// Get total payments recorded.
+    /// O(1) total payment count.
     pub fn total_payments(env: Env) -> u32 {
-        let payments: Vec<Payment> = env.storage().instance().get(&PAYMENTS_KEY).unwrap();
-        payments.len()
+        env.storage().instance().get(&PAYMENT_COUNT_KEY).unwrap_or(0)
     }
 
-    /// Transfer admin rights.
     pub fn set_admin(env: Env, new_admin: Address) {
         let mut config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
         config.admin.require_auth();
@@ -201,7 +189,6 @@ impl PaymentVerifier {
         env.storage().instance().set(&CONFIG_KEY, &config);
     }
 
-    /// Pause or unpause the contract.
     pub fn set_paused(env: Env, paused: bool) {
         let mut config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
         config.admin.require_auth();
@@ -224,19 +211,17 @@ mod test {
 
         let contract_id = env.register(PaymentVerifier, ());
         let client = PaymentVerifierClient::new(&env, &contract_id);
-
         client.init(&admin);
 
         let payer = Address::generate(&env);
         let payee = Address::generate(&env);
-
         let tx_hash = String::from_str(&env, "abc123");
 
         client.mock_all_auths().record_payment(
             &tx_hash,
             &payer,
             &payee,
-            &100_000_000i128, // 100 USDC (7 decimals)
+            &100_000_000i128,
             &String::from_str(&env, "USDC"),
             &1712345678u64,
             &String::from_str(&env, "quote-001"),
@@ -249,6 +234,40 @@ mod test {
         assert_eq!(payment.tx_hash, tx_hash);
         assert_eq!(payment.amount, 100_000_000i128);
         assert!(payment.verified);
+    }
+
+    #[test]
+    fn test_get_payments_pagination() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+
+        let contract_id = env.register(PaymentVerifier, ());
+        let client = PaymentVerifierClient::new(&env, &contract_id);
+        client.init(&admin);
+
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+
+        for i in 0..5 {
+            let hash = String::from_str(&env, &["tx0", "tx1", "tx2", "tx3", "tx4"][i as usize]);
+            client.mock_all_auths().record_payment(
+                &hash,
+                &payer,
+                &payee,
+                &((i + 1) as i128 * 100_000_000),
+                &String::from_str(&env, "USDC"),
+                &1712345678u64,
+                &String::from_str(&env, &["q0", "q1", "q2", "q3", "q4"][i as usize]),
+            );
+        }
+
+        assert_eq!(client.total_payments(), 5);
+
+        let page1 = client.get_payments(&0, &2);
+        assert_eq!(page1.len(), 2);
+
+        let page2 = client.get_payments(&2, &3);
+        assert_eq!(page2.len(), 3);
     }
 
     #[test]
