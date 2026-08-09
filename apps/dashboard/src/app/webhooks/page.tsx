@@ -1,6 +1,15 @@
 'use client';
 
-import { Webhook, Plus, Globe, Loader2, AlertTriangle, RefreshCw, Send, CheckCircle } from 'lucide-react';
+import {
+  Webhook,
+  Plus,
+  Globe,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
+  Send,
+  CheckCircle,
+} from 'lucide-react';
 import { useState } from 'react';
 import { sendWebhookTest } from '@/lib/api';
 
@@ -93,9 +102,21 @@ export default function WebhooksPage() {
       )}
 
       {testResult && (
-        <div className={`card border-${testResult.success ? 'green' : 'red'}-800/30 bg-${testResult.success ? 'green' : 'red'}-950/10`}>
+        <div
+          className={
+            testResult.success
+              ? 'card border-green-800/30 bg-green-950/10'
+              : 'card border-red-800/30 bg-red-950/10'
+          }
+        >
           <div className="flex items-start gap-3">
-            <div className={`p-2 bg-${testResult.success ? 'green' : 'red'}-900/20 rounded-lg shrink-0`}>
+            <div
+              className={
+                testResult.success
+                  ? 'p-2 bg-green-900/20 rounded-lg shrink-0'
+                  : 'p-2 bg-red-900/20 rounded-lg shrink-0'
+              }
+            >
               {testResult.success ? (
                 <CheckCircle className="w-5 h-5 text-green-400" />
               ) : (
@@ -103,7 +124,11 @@ export default function WebhooksPage() {
               )}
             </div>
             <div className="flex-1">
-              <h3 className={`font-medium ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
+              <h3
+                className={
+                  testResult.success ? 'font-medium text-green-400' : 'font-medium text-red-400'
+                }
+              >
                 {testResult.success ? 'Test Successful' : 'Test Failed'}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">{testResult.message}</p>

@@ -3,6 +3,9 @@
 import { Bell, Settings, Wallet, LogOut, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 
+const STELLAR_NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK || 'testnet';
+const NETWORK_LABEL = STELLAR_NETWORK.charAt(0).toUpperCase() + STELLAR_NETWORK.slice(1);
+
 export function Navbar() {
   const { address, isConnected, loading, disconnect } = useAuth();
 
@@ -12,7 +15,7 @@ export function Navbar() {
         <img src="/icon.svg" alt="x402" className="w-8 h-8 rounded-lg" />
         <span className="font-semibold text-lg">x402 Gateway</span>
         <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/30 text-green-400 border border-green-800/50 ml-2">
-          Testnet
+          {NETWORK_LABEL}
         </span>
       </div>
 

@@ -69,6 +69,3 @@ async function bootstrap() {
 }
 
 bootstrap();
-// test comment
-// pre-commit test
-// pre-commit test
