@@ -48,7 +48,6 @@ infrastructure/terraform/*.tfstate.backup
 
 # Rust / Soroban
 contracts/*/target/
-contracts/*/Cargo.lock
 
 # Stellar CLI local config
 .stellar/
