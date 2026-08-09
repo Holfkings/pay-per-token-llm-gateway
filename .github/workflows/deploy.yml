@@ -13,7 +13,23 @@ env:
   STELLAR_CLI_VERSION: '27.1.0'
 
 jobs:
+  check-ci:
+    name: Verify CI Passed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check latest CI run on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CONCLUSION=$(gh run list --workflow CI --branch main --limit 1 --json conclusion --jq '.[0].conclusion')
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "Latest CI run on main: $CONCLUSION — aborting deploy"
+            exit 1
+          fi
+          echo "CI passed on main, proceeding with deploy"
+
   docker:
+    needs: [check-ci]
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
     steps:
@@ -61,6 +77,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy_contracts:
+    needs: [check-ci]
     name: Deploy Soroban Contracts
     runs-on: ubuntu-latest
     steps:
