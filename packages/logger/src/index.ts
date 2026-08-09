@@ -20,16 +20,33 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 let minLevel: LogLevel = 'info';
+let useJson = false;
 
 export function setLogLevel(level: LogLevel): void {
   minLevel = level;
+}
+
+/** Enable JSON-formatted logs for production log aggregators */
+export function enableJsonLogs(): void {
+  useJson = true;
 }
 
 function shouldLog(level: LogLevel): boolean {
   return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[minLevel];
 }
 
-function formatEntry(entry: LogEntry): string {
+function formatJson(entry: LogEntry): string {
+  const { timestamp, level, message, context, traceId } = entry;
+  return JSON.stringify({
+    ts: timestamp,
+    level,
+    msg: message,
+    ...(traceId ? { trace: traceId } : {}),
+    ...(context && Object.keys(context).length > 0 ? context : {}),
+  });
+}
+
+function formatText(entry: LogEntry): string {
   const parts = [`[${entry.timestamp}]`, entry.level.toUpperCase().padEnd(5)];
   if (entry.traceId) {
     parts.push(`[trace=${entry.traceId}]`);
@@ -43,19 +60,21 @@ function formatEntry(entry: LogEntry): string {
 
 function log(level: LogLevel, message: string, context?: Record<string, unknown>): void {
   if (!shouldLog(level)) return;
+
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
     message,
     context,
   };
-  const formatted = formatEntry(entry);
-  if (level === 'error') {
-    console.error(formatted);
-  } else if (level === 'warn') {
-    console.warn(formatted);
+
+  const formatted = useJson ? formatJson(entry) : formatText(entry);
+
+  // Use stderr for errors/warnings, stdout for info/debug
+  if (level === 'error' || level === 'warn') {
+    process.stderr.write(formatted + '\n');
   } else {
-    console.log(formatted);
+    process.stdout.write(formatted + '\n');
   }
 }
 
