@@ -137,6 +137,7 @@ impl Multisig {
 mod test {
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::token::StellarAssetClient;
 
     #[test]
     fn test_init_with_valid_signers() {
@@ -237,14 +238,22 @@ mod test {
         let env = Env::default();
         let signer1 = Address::generate(&env);
         let signer2 = Address::generate(&env);
-        let token = Address::generate(&env);
         let destination = Address::generate(&env);
+
+        // Deploy a real SAC token and mint funds to the multisig contract
+        let token_admin = Address::generate(&env);
+        let token = env.register_stellar_asset_contract(token_admin.clone());
 
         let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
         let contract_id = env.register_contract(None, Multisig);
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &2u32, &token);
+
+        // Mint tokens to the multisig contract so it can transfer when executed
+        StellarAssetClient::new(&env, &token)
+            .mock_all_auths()
+            .mint(&contract_id, &1_000_000_000i128);
 
         let proposal_id = client.propose(&destination, &100_000_000i128);
 
@@ -267,14 +276,22 @@ mod test {
         let env = Env::default();
         let signer1 = Address::generate(&env);
         let signer2 = Address::generate(&env);
-        let token = Address::generate(&env);
         let destination = Address::generate(&env);
+
+        // Deploy a real SAC token and mint funds to the multisig contract
+        let token_admin = Address::generate(&env);
+        let token = env.register_stellar_asset_contract(token_admin.clone());
 
         let signers = Vec::from_array(&env, [signer1.clone(), signer2.clone()]);
 
         let contract_id = env.register_contract(None, Multisig);
         let client = MultisigClient::new(&env, &contract_id);
         client.init(&signers, &2u32, &token);
+
+        // Mint tokens to the multisig contract so it can transfer when executed
+        StellarAssetClient::new(&env, &token)
+            .mock_all_auths()
+            .mint(&contract_id, &1_000_000_000i128);
 
         let proposal_id = client.propose(&destination, &100_000_000i128);
 
