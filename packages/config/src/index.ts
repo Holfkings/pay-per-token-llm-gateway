@@ -4,6 +4,15 @@
 
 import type { StellarNetwork, PaymentAsset } from '@x402/types';
 
+export interface ContractAddresses {
+  /** Payment verifier contract ID */
+  paymentVerifier: string;
+  /** Credit escrow contract ID (v2) */
+  creditEscrow: string;
+  /** Multisig wallet contract ID */
+  multisig: string;
+}
+
 export interface GatewayConfig {
   /** Server port */
   port: number;
@@ -50,7 +59,13 @@ export interface GatewayConfig {
     quoteExpirySeconds: number;
     /** Minimum payment amount in stroops (smallest unit) */
     minPaymentAmount: string;
+    /** Secret key of the contract admin (for on-chain payment recording).
+     * Optional — if not set, on-chain recording is skipped. */
+    contractAdminSecret?: string;
   };
+
+  /** Deployed Soroban contract addresses */
+  contracts: ContractAddresses;
 
   /** Upstream LLM configuration */
   llm: {
@@ -89,6 +104,46 @@ export interface GatewayConfig {
 }
 
 /**
+ * Validate that required environment variables are set.
+ * Call this at startup to fail fast with clear error messages.
+ */
+export function validateEnv(): void {
+  // Skip validation in test mode — test suites set their own env vars
+  if (process.env.NODE_ENV === 'test') return;
+
+  const required: { key: string; value: string | undefined; message: string }[] = [
+    {
+      key: 'DATABASE_URL',
+      value: process.env.DATABASE_URL,
+      message: 'DATABASE_URL is required. Set it to your PostgreSQL connection string.',
+    },
+    {
+      key: 'REDIS_URL',
+      value: process.env.REDIS_URL,
+      message: 'REDIS_URL is required. Set it to your Redis connection string.',
+    },
+  ];
+
+  // JWT_SECRET is required in production; in dev/test, a warning is sufficient
+  if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'JWT_SECRET is required in production. Generate one with: openssl rand -base64 32',
+      );
+    }
+    console.warn(
+      '⚠  JWT_SECRET not set — using insecure dev default. Set JWT_SECRET before deploying to production.',
+    );
+  }
+
+  const missing = required.filter((r) => !r.value);
+  if (missing.length > 0) {
+    const messages = missing.map((r) => `  • ${r.message}`).join('\n');
+    throw new Error(`Missing required environment variables:\n${messages}`);
+  }
+}
+
+/**
  * Load configuration from environment variables with sane defaults.
  */
 export function loadConfig(): GatewayConfig {
@@ -115,6 +170,12 @@ export function loadConfig(): GatewayConfig {
       passphrase: 'Test SDF Future Network ; October 2022',
     },
   };
+
+  // Determine JWT secret — required in production, dev fallback only in non-prod
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret && nodeEnv === 'production') {
+    throw new Error('JWT_SECRET is required in production');
+  }
 
   return {
     port: parseInt(process.env.PORT || '3000', 10),
@@ -145,6 +206,7 @@ export function loadConfig(): GatewayConfig {
         process.env.USDC_ISSUER || 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
       quoteExpirySeconds: parseInt(process.env.QUOTE_EXPIRY_SECONDS || '300', 10),
       minPaymentAmount: process.env.MIN_PAYMENT_AMOUNT || '10000', // 0.00001 XLM in stroops
+      contractAdminSecret: process.env.CONTRACT_ADMIN_SECRET || undefined,
     },
 
     llm: {
@@ -170,9 +232,21 @@ export function loadConfig(): GatewayConfig {
     },
 
     security: {
-      jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+      jwtSecret: jwtSecret || 'dev-secret-change-in-production',
       sessionDuration: parseInt(process.env.SESSION_DURATION || '86400', 10),
       corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3001').split(','),
+    },
+
+    contracts: {
+      paymentVerifier:
+        process.env.PAYMENT_VERIFIER_CONTRACT ||
+        'CDHGI3A2BXRC5AQDPWEEXUDQMDXTDZYBCLJZWSE5XZKMVEGJ5LLHA4CZ',
+      creditEscrow:
+        process.env.CREDIT_ESCROW_CONTRACT ||
+        'CCE7AWVXPO57W5KDONOPMHDV4S5UBUBMHNJVSAVPL7AZGMD4WQN6WVAP',
+      multisig:
+        process.env.MULTISIG_CONTRACT ||
+        'CDMBVMMNJVAJVAV3T2TAL2TAACGTKYUS45RXNLCYKYUC3VGHBI66NWAA',
     },
   };
 }

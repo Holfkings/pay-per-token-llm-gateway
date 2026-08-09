@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchProviders,
   fetchAnalyticsSummary,
+  fetchTimeSeries,
   fetchPayments,
   fetchRoutes,
   fetchAuditLogs,
@@ -15,6 +16,7 @@ import {
   type ProviderResponse,
   type RouteResponse,
   type AnalyticsSummary,
+  type TimeSeriesPoint,
   type PaginatedPayments,
   type PaginatedAuditLogs,
 } from './api';
@@ -51,6 +53,20 @@ export function useAnalytics(providerId?: string) {
     queryFn: () => fetchAnalyticsSummary(providerId),
     staleTime: 30_000,
     refetchInterval: 60_000, // auto-refresh every minute
+  });
+}
+
+export function useTimeSeries(
+  providerId?: string,
+  intervalMinutes?: number,
+  durationHours?: number,
+) {
+  return useQuery<TimeSeriesPoint[]>({
+    queryKey: ['analytics', 'timeseries', providerId, intervalMinutes, durationHours] as const,
+    queryFn: () => fetchTimeSeries(providerId!, intervalMinutes, durationHours),
+    enabled: !!providerId,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 }
 

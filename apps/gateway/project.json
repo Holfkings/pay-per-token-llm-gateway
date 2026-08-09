@@ -15,7 +15,14 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx tsx apps/gateway/src/main.ts",
+        "command": "npx ts-node --project apps/gateway/tsconfig.json apps/gateway/src/main.ts",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node dist/out-tsc/apps/gateway/src/main.js",
         "cwd": "{workspaceRoot}"
       }
     },

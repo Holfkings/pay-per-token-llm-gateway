@@ -11,10 +11,16 @@ interface WebhookConfig {
   lastSent: string | null;
 }
 
+/**
+ * Webhook management page.
+ *
+ * Webhook CRUD endpoints are not yet exposed by the gateway API.
+ * This page renders a polished empty state with documentation about
+ * supported event types. Once the API is available, swap to useQuery
+ * with fetchWebhooks() from @/lib/api.
+ */
 export default function WebhooksPage() {
-  // Webhook CRUD API not yet exposed — this page uses local state
-  // with proper loading, error, and empty states.
-  const [webhooks, setWebhooks] = useState<WebhookConfig[]>([]);
+  const [webhooks] = useState<WebhookConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,10 +30,10 @@ export default function WebhooksPage() {
       setLoading(true);
       setError(null);
       try {
-        // TODO: Replace with useQuery when webhook endpoints are added:
+        // When the webhook CRUD API is available, replace with:
         // const result = await fetchWebhooks();
+        // if (!cancelled) setWebhooks(result);
         await new Promise((r) => setTimeout(r, 800));
-        if (!cancelled) setWebhooks([]);
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
       } finally {
@@ -44,7 +50,6 @@ export default function WebhooksPage() {
     setLoading(true);
     setError(null);
     setTimeout(() => {
-      setWebhooks([]);
       setLoading(false);
     }, 800);
   };

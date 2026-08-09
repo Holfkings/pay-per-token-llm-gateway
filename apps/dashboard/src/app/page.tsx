@@ -18,20 +18,37 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { useAnalytics } from '@/lib/hooks';
+import { useAnalytics, useProvider, useTimeSeries } from '@/lib/hooks';
+import { format } from 'date-fns';
+
+const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3000';
+
+// Static demo chart data used as fallback when no provider is configured
+// or the time series API returns no data.
+const DEMO_CHART_DATA = [
+  { name: 'Mon', paid: 240, unpaid: 40 },
+  { name: 'Tue', paid: 310, unpaid: 55 },
+  { name: 'Wed', paid: 280, unpaid: 48 },
+  { name: 'Thu', paid: 350, unpaid: 62 },
+  { name: 'Fri', paid: 290, unpaid: 45 },
+  { name: 'Sat', paid: 180, unpaid: 20 },
+  { name: 'Sun', paid: 200, unpaid: 25 },
+];
 
 export default function DashboardPage() {
-  const { data: stats, isLoading, error } = useAnalytics();
+  const { data: provider } = useProvider();
+  const { data: stats, isLoading, error } = useAnalytics(provider?.id);
+  const { data: timeSeriesData } = useTimeSeries(provider?.id, 60, 24);
 
-  const chartData = [
-    { name: 'Mon', paid: 240, unpaid: 40 },
-    { name: 'Tue', paid: 310, unpaid: 55 },
-    { name: 'Wed', paid: 280, unpaid: 48 },
-    { name: 'Thu', paid: 350, unpaid: 62 },
-    { name: 'Fri', paid: 290, unpaid: 45 },
-    { name: 'Sat', paid: 180, unpaid: 20 },
-    { name: 'Sun', paid: 200, unpaid: 25 },
-  ];
+  // Build chart data from time series API, or fall back to demo data
+  const chartData =
+    timeSeriesData && timeSeriesData.length > 0
+      ? timeSeriesData.map((point) => ({
+          name: format(new Date(point.timestamp), 'MMM d, HH:mm'),
+          paid: point.paidRequests,
+          unpaid: point.unpaidRequests,
+        }))
+      : DEMO_CHART_DATA;
 
   if (error) {
     return (
@@ -44,9 +61,7 @@ export default function DashboardPage() {
           <p className="text-red-400">Failed to load analytics: {(error as Error).message}</p>
           <p className="text-muted-foreground text-sm mt-2">
             Make sure the gateway is running at{' '}
-            <code className="bg-gray-800 px-1 rounded">
-              {process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3000'}
-            </code>
+            <code className="bg-gray-800 px-1 rounded">{GATEWAY_URL}</code>
           </p>
         </div>
       </div>

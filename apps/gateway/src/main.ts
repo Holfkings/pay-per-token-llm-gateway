@@ -4,10 +4,13 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { json } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { getConfig } from '@x402/config';
+import { getConfig, validateEnv } from '@x402/config';
 import { logger } from '@x402/logger';
 
 async function bootstrap() {
+  // Fail fast if required environment variables are missing
+  validateEnv();
+
   const config = getConfig();
   const app = await NestFactory.create(AppModule, {
     bodyParser: false, // we set it explicitly below with a size limit
@@ -16,8 +19,8 @@ async function bootstrap() {
   // Body size limit: 1 MB is enough for any reasonable chat completion request
   app.use(json({ limit: '1mb' }));
 
-  // Global prefix
-  app.setGlobalPrefix('api/v1');
+  // Global prefix — health endpoint is excluded so load balancers can hit /health directly
+  app.setGlobalPrefix('api/v1', { exclude: ['health'] });
 
   // CORS
   app.enableCors({
@@ -51,6 +54,7 @@ async function bootstrap() {
     .addTag('payments', 'Payment history and status')
     .addTag('analytics', 'Usage and revenue analytics')
     .addTag('admin', 'Admin operations')
+    .addTag('health', 'Health check')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
@@ -60,6 +64,7 @@ async function bootstrap() {
   logger.info(`🚀 x402 Gateway running on http://${config.host}:${config.port}`, {
     network: config.stellar.network,
     docs: `http://${config.host}:${config.port}/api/docs`,
+    health: `http://${config.host}:${config.port}/health`,
   });
 }
 

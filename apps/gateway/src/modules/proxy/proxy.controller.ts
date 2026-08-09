@@ -465,7 +465,9 @@ export class ProxyController {
     if (route.pricingModel !== 'per_token' || !tokensUsed) {
       // Flat-rate or no token data: actual cost = paid amount
       const paid = payment?.amount?.toString() || '0';
-      res.setHeader('X-Actual-Cost', paid);
+      if (!res.headersSent) {
+        res.setHeader('X-Actual-Cost', paid);
+      }
       return {
         actualCost: paid,
         surplus: '0',
@@ -482,12 +484,14 @@ export class ProxyController {
     const paidAmount = payment?.amount?.toString() || actualCost;
     const comparison = comparePayment(paidAmount, actualCost);
 
-    // Set response headers
-    res.setHeader('X-Actual-Cost', actualCost);
-    res.setHeader('X-Tokens-Used', String(tokensUsed));
-    res.setHeader('X-Paid-Amount', paidAmount);
-    if (comparison.surplus !== '0') {
-      res.setHeader('X-Surplus', comparison.surplus);
+    // Set response headers (skip if streaming — headers already flushed)
+    if (!res.headersSent) {
+      res.setHeader('X-Actual-Cost', actualCost);
+      res.setHeader('X-Tokens-Used', String(tokensUsed));
+      res.setHeader('X-Paid-Amount', paidAmount);
+      if (comparison.surplus !== '0') {
+        res.setHeader('X-Surplus', comparison.surplus);
+      }
     }
 
     // Record actual cost on the payment

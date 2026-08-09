@@ -50,6 +50,9 @@ infrastructure/terraform/*.tfstate.backup
 contracts/*/target/
 contracts/*/Cargo.lock
 
+# Stellar CLI local config
+.stellar/
+
 # TypeScript
 *.tsbuildinfo
 

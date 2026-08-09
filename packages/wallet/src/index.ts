@@ -56,6 +56,17 @@ export function getHorizonUrl(network: StellarNetwork): string {
   }
 }
 
+export function getSorobanRpcUrl(network: StellarNetwork): string {
+  switch (network) {
+    case 'mainnet':
+      return 'https://soroban-mainnet.stellar.org';
+    case 'testnet':
+      return 'https://soroban-testnet.stellar.org';
+    case 'futurenet':
+      return 'https://rpc-futurenet.stellar.org';
+  }
+}
+
 // ── Payment Transaction Builder ──────────────
 
 export interface BuildPaymentOptions {

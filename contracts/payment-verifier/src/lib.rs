@@ -56,7 +56,7 @@ const USED_TX_KEY: Symbol = symbol_short!("USED_TX");
 
 fn emit_payment_verified(env: &Env, payment: &Payment) {
     let topics = (
-        symbol_short!("payment_verif"),
+        symbol_short!("pay_verif"),
         payment.tx_hash.clone(),
     );
     env.events().publish(
@@ -73,7 +73,7 @@ fn emit_payment_verified(env: &Env, payment: &Payment) {
 }
 
 fn emit_payment_refunded(env: &Env, tx_hash: String, reason: String) {
-    let topics = (symbol_short!("payment_refun"), tx_hash);
+    let topics = (        symbol_short!("pay_refun"), tx_hash);
     env.events().publish(topics, reason);
 }
 

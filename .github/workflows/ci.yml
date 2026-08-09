@@ -8,7 +8,6 @@ on:
 
 env:
   PNPM_VERSION: "9"
-  NODE_VERSION: "20"
 
 jobs:
   lint:
@@ -19,13 +18,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -63,13 +66,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -118,13 +125,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
@@ -137,14 +148,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --audit-level=critical || true
+      - run: pnpm audit --audit-level=critical

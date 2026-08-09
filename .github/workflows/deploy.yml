@@ -5,9 +5,12 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 env:
   PNPM_VERSION: latest
-  NODE_VERSION: '20'
+  STELLAR_CLI_VERSION: '27.1.0'
 
 jobs:
   docker:
@@ -15,6 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -59,26 +66,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: stable
           target: wasm32-unknown-unknown
-          override: true
 
-      - name: Install Soroban CLI
-        run: cargo install --locked stellar-cli --features opt
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/*/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('contracts/**/Cargo.toml') }}
 
-      - name: Build contracts
+      - name: Download Stellar CLI (pre-built)
         run: |
+          curl -sL -o /tmp/stellar.tar.gz \
+            "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf /tmp/stellar.tar.gz -C /tmp
+          chmod +x /tmp/stellar
+          sudo mv /tmp/stellar /usr/local/bin/stellar
+          stellar --version
+
+      - name: Configure Stellar testnet
+        run: |
+          stellar network add testnet \
+            --rpc-url https://soroban-testnet.stellar.org \
+            --network-passphrase "Test SDF Network ; September 2015"
+
+      - name: Build and deploy contracts
+        run: |
+          STELLAR_SECRET="${{ secrets.STELLAR_SECRET_KEY }}"
+          if [ -z "$STELLAR_SECRET" ]; then
+            echo "⚠  STELLAR_SECRET_KEY not set — skipping contract deployment"
+            exit 0
+          fi
+
           for contract in payment-verifier credit-escrow multisig; do
+            echo "Building $contract..."
             cd contracts/$contract
             stellar contract build
+
+            echo "Deploying $contract to testnet..."
+            CONTRACT_ID=$(stellar contract deploy \
+              --wasm target/wasm32-unknown-unknown/release/${contract//-/_}.wasm \
+              --source-account "$STELLAR_SECRET" \
+              --network testnet 2>&1 | tail -1)
+            echo "$contract deployed at: $CONTRACT_ID"
+
             cd ../../
           done
-
-      - name: Deploy to Testnet
-        run: |
-          stellar network add testnet --rpc-url https://soroban-testnet.stellar.org --network-passphrase "Test SDF Network ; September 2015"
-          echo "Contract deployment would be configured with ${{ secrets.STELLAR_SECRET_KEY }}"
         env:
           STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}

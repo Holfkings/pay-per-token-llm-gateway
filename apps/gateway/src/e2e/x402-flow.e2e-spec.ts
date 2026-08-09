@@ -103,12 +103,16 @@ const mockPrisma = jest.requireMock('@x402/database').prisma as any;
 jest.mock('ioredis', () => ({
   default: jest.fn().mockImplementation(() => ({
     eval: jest.fn().mockResolvedValue(1),
+    exists: jest.fn().mockResolvedValue(0),
+    set: jest.fn().mockResolvedValue('OK'),
     on: jest.fn(),
     connect: jest.fn(),
     ping: jest.fn().mockResolvedValue('PONG'),
   })),
   Redis: jest.fn().mockImplementation(() => ({
     eval: jest.fn().mockResolvedValue(1),
+    exists: jest.fn().mockResolvedValue(0),
+    set: jest.fn().mockResolvedValue('OK'),
     on: jest.fn(),
     connect: jest.fn(),
     ping: jest.fn().mockResolvedValue('PONG'),
@@ -191,6 +195,8 @@ describe('x402 Gateway E2E', () => {
       .overrideProvider('REDIS')
       .useValue({
         eval: jest.fn().mockResolvedValue(1),
+        exists: jest.fn().mockResolvedValue(0),
+        set: jest.fn().mockResolvedValue('OK'),
         on: jest.fn(),
         connect: jest.fn(),
         ping: jest.fn().mockResolvedValue('PONG'),
