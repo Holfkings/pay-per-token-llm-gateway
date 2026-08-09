@@ -1,0 +1,30 @@
+#!/bin/sh
+# Enforce Conventional Commits format
+# Valid types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert
+
+COMMIT_MSG=$(cat "$1")
+
+# Skip merge commits
+if echo "$COMMIT_MSG" | grep -qE '^Merge'; then
+  exit 0
+fi
+
+# Must match: type(scope): description or type: description
+if ! echo "$COMMIT_MSG" | head -1 | grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\([a-z0-9_.-]+\))?: .+'; then
+  echo "❌ Commit message does not follow Conventional Commits format."
+  echo ""
+  echo "Expected format: type(scope): description"
+  echo ""
+  echo "Valid types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert"
+  echo "Optional scope: (proxy), (ci), (contracts), (ui), etc."
+  echo ""
+  echo "Examples:"
+  echo "  feat(ui): add logo to login page"
+  echo "  fix(proxy): strip global prefix from req.path"
+  echo "  chore: update dependencies"
+  echo ""
+  echo "Your message: $COMMIT_MSG"
+  exit 1
+fi
+
+exit 0
