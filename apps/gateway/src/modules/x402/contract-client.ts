@@ -6,24 +6,54 @@
  * block the primary Horizon-based payment verification flow.
  */
 
-interface RpcResponse {
+/** JSON-RPC 2.0 response wrapper */
+interface RpcResponse<T = unknown> {
   jsonrpc: string;
   id: number;
-  result?: any;
-  error?: any;
+  result?: T;
+  error?: { code: number; message: string; data?: unknown };
 }
 
-async function sorobanRpcCall(rpcUrl: string, method: string, params: any): Promise<any> {
+/** Ledger key for contract data queries */
+interface ContractDataKey {
+  type: 'contractData';
+  contractId: string;
+  key: {
+    type: 'vec';
+    value: Array<{ type: 'symbol' | 'string'; value: string }>;
+  };
+  durability: 'persistent' | 'temporary';
+}
+
+/** Response from getLedgerEntries */
+interface GetLedgerEntriesResult {
+  entries: Array<{
+    key: ContractDataKey;
+    xdr: string;
+    lastModifiedLedgerSeq: number;
+  }>;
+}
+
+async function sorobanRpcCall<T = unknown>(
+  rpcUrl: string,
+  method: string,
+  params: Record<string, unknown>,
+): Promise<T> {
   const res = await fetch(rpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
-  const json = (await res.json()) as RpcResponse;
-  if (json.error) {
-    throw new Error(`RPC error: ${JSON.stringify(json.error)}`);
+
+  if (!res.ok) {
+    throw new Error(`RPC HTTP error: ${res.status} ${res.statusText}`);
   }
-  return json.result;
+
+  const json = (await res.json()) as RpcResponse<T>;
+  if (json.error) {
+    throw new Error(`RPC error ${json.error.code}: ${json.error.message}`);
+  }
+  return json.result as T;
 }
 
 /**
@@ -38,27 +68,25 @@ export async function isPaymentUsedOnChain(
   rpcUrl: string,
 ): Promise<boolean> {
   try {
-    // Query the contract's storage for the USED_TX key
-    // The key format in the contract is (Symbol("USED_TX"), txHash)
-    const result = await sorobanRpcCall(rpcUrl, 'getLedgerEntries', {
-      keys: [
-        // LedgerKey for contract data — we check if the USED_TX + txHash entry exists
-        {
-          type: 'contractData',
-          contractId,
-          key: {
-            type: 'vec',
-            value: [
-              { type: 'symbol', value: 'USED_TX' },
-              { type: 'string', value: txHash },
-            ],
-          },
-          durability: 'persistent',
-        },
-      ],
-    });
+    const key: ContractDataKey = {
+      type: 'contractData',
+      contractId,
+      key: {
+        type: 'vec',
+        value: [
+          { type: 'symbol', value: 'USED_TX' },
+          { type: 'string', value: txHash },
+        ],
+      },
+      durability: 'persistent',
+    };
 
-    // If entries exist, the payment has been recorded
+    const result = await sorobanRpcCall<GetLedgerEntriesResult>(
+      rpcUrl,
+      'getLedgerEntries',
+      { keys: [key] },
+    );
+
     return !!(result?.entries && result.entries.length > 0);
   } catch {
     // If the contract is unreachable, assume not used (fall back to Redis)
