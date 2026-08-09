@@ -80,7 +80,7 @@ jobs:
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
-      - run: npx prisma generate --schema=packages/database/prisma/schema.prisma
+      - run: pnpm nx run database:generate
       - run: pnpm exec nx run-many --target=test --all
         env:
           DATABASE_URL: postgresql://x402:x402_test@localhost:5432/x402_gateway_test
@@ -139,7 +139,7 @@ jobs:
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
-      - run: npx prisma generate --schema=packages/database/prisma/schema.prisma
+      - run: pnpm nx run database:generate
       - run: pnpm exec nx run-many --target=build --all
 
   security:
