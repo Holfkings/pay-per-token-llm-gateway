@@ -222,7 +222,7 @@ mod test {
         let env = Env::default();
         let admin = Address::generate(&env);
 
-        let contract_id = env.register_contract(None, PaymentVerifier);
+        let contract_id = env.register(PaymentVerifier, ());
         let client = PaymentVerifierClient::new(&env, &contract_id);
 
         client.init(&admin);
@@ -257,7 +257,7 @@ mod test {
         let env = Env::default();
         let admin = Address::generate(&env);
 
-        let contract_id = env.register_contract(None, PaymentVerifier);
+        let contract_id = env.register(PaymentVerifier, ());
         let client = PaymentVerifierClient::new(&env, &contract_id);
         client.init(&admin);
 

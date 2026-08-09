@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { prisma } from '@x402/database';
-import { logger } from '@x402/logger';
 
 @Injectable()
 export class AdminService {
@@ -47,7 +46,7 @@ export class AdminService {
     const page = options.page || 1;
     const limit = options.limit || 50;
     const { action, entity } = options;
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (action) where.action = action;
     if (entity) where.entity = entity;
 
@@ -72,6 +71,6 @@ export class AdminService {
     details?: Record<string, unknown>;
     ip?: string;
   }) {
-    await prisma.auditLog.create({ data: data as any });
+    await prisma.auditLog.create({ data: data as Record<string, unknown> });
   }
 }

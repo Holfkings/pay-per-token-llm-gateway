@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { ProxyService } from './proxy.service';
 import { X402Service } from '../x402/x402.service';
 import { RoutesService } from '../routes/routes.service';
@@ -22,7 +22,7 @@ import { chatCompletionRequestSchema } from '@x402/validation';
 import { calculatePrice, comparePayment } from '@x402/x402-core';
 import { logger } from '@x402/logger';
 import { generateId } from '@x402/shared';
-import type { ChatCompletionRequest, PaymentRecord, RouteConfig } from '@x402/types';
+import type { ChatCompletionRequest, PaymentRecord, Quote, RouteConfig } from '@x402/types';
 
 @ApiTags('proxy')
 @Controller()
@@ -220,7 +220,7 @@ export class ProxyController {
 
     const quote = await this.x402Service.generateQuoteForRoute(route);
     const quoteForVerification = existingPayment?.receiptJson
-      ? (existingPayment.receiptJson as any)
+      ? (existingPayment.receiptJson as Quote)
       : quote;
 
     const verification = await this.x402Service.verifyPayment(txHash, quoteForVerification);
@@ -370,7 +370,7 @@ export class ProxyController {
     apiKey: string | undefined,
     payment: PaymentRecord | null,
     traceId: string,
-    startTime: number,
+    _startTime: number,
   ) {
     logger.info('Forwarding request to upstream', {
       traceId,

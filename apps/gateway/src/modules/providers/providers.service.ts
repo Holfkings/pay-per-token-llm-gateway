@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@x402/database';
-import { generateId } from '@x402/shared';
 import { logger } from '@x402/logger';
 import type { Provider } from '@x402/types';
 

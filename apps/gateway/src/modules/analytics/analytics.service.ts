@@ -135,7 +135,7 @@ export class AnalyticsService {
     });
 
     const topCallers = topCallerRows.map((row) => ({
-      address: row.callerAddress!,
+      address: row.callerAddress ?? 'unknown',
       totalSpent: (row._sum.amount || 0n).toString(),
       requestCount: row._count.id,
     }));

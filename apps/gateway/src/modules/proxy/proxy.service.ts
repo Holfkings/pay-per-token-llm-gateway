@@ -115,7 +115,6 @@ export class ProxyService {
     const reader = upstreamRes.body.getReader();
     let totalTokens: number | undefined;
     let aborted = false;
-    let lastChunkJson: Record<string, unknown> | null = null;
 
     // Handle client disconnection → abort upstream fetch + reader
     const onClientClose = () => {
@@ -167,7 +166,6 @@ export class ProxyService {
           try {
             const jsonStr = trimmed.slice(6);
             const parsed = JSON.parse(jsonStr);
-            lastChunkJson = parsed;
             // Capture usage from any chunk that has it (typically the last)
             if (parsed.usage?.total_tokens != null) {
               totalTokens = parsed.usage.total_tokens;
@@ -217,7 +215,7 @@ export class ProxyService {
    */
   validateRequest(request: unknown): request is ChatCompletionRequest {
     if (!request || typeof request !== 'object') return false;
-    const r = request as any;
-    return typeof r.model === 'string' && Array.isArray(r.messages) && r.messages.length > 0;
+    const r = request as Record<string, unknown>;
+    return typeof r.model === 'string' && Array.isArray(r.messages) && (r.messages as unknown[]).length > 0;
   }
 }

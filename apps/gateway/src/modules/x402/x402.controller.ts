@@ -14,7 +14,7 @@ import { RoutesService } from '../routes/routes.service';
 import { PaymentsService } from '../payments/payments.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { verifyPaymentSchema } from '@x402/validation';
-import { logger } from '@x402/logger';
+import type { Quote } from '@x402/types';
 
 @ApiTags('x402')
 @Controller('x402')
@@ -45,7 +45,7 @@ export class X402Controller {
       throw new BadRequestException('Quote not found or expired');
     }
 
-    const quote = storedPayment.receiptJson as any;
+    const quote = storedPayment.receiptJson as Quote;
     const verification = await this.x402Service.verifyPayment(txHash, quote);
 
     if (verification.verified) {

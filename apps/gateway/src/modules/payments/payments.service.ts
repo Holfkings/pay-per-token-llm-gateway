@@ -40,7 +40,7 @@ export class PaymentsService {
         amount: BigInt(quote.amount),
         asset: quote.asset,
         status: 'pending',
-        receiptJson: quote as any,
+        receiptJson: quote as unknown as Record<string, unknown>,
       },
     });
 
@@ -75,7 +75,7 @@ export class PaymentsService {
         status: 'confirmed',
         verifiedAt: new Date(verification.timestamp * 1000),
         ledger: verification.ledger,
-        receiptJson: receipt as any,
+        receiptJson: receipt as unknown as Record<string, unknown>,
       },
     });
 
@@ -123,7 +123,7 @@ export class PaymentsService {
     const limit = options.limit || 20;
     const { providerId, status, payerAddress } = options;
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (providerId) where.providerId = providerId;
     if (status) where.status = status;
     if (payerAddress) where.payerAddress = payerAddress;
@@ -181,7 +181,7 @@ export class PaymentsService {
     await prisma.payment.updateMany({
       where: { quoteId },
       data: {
-        receiptJson: updatedReceipt as any,
+        receiptJson: updatedReceipt as Record<string, unknown>,
       },
     });
 

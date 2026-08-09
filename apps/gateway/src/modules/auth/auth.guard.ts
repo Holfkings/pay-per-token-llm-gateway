@@ -27,8 +27,10 @@ export class AuthGuard implements CanActivate {
     }
 
     // Attach authenticated address to the request for downstream use
-    (request as any).authenticatedAddress = result.address;
-    (request as any).sessionId = result.sessionId;
+    Object.assign(request, {
+      authenticatedAddress: result.address,
+      sessionId: result.sessionId,
+    });
 
     return true;
   }
