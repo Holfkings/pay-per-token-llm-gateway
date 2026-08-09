@@ -60,6 +60,9 @@
     "tslib": "^2.6.0"
   },
   "pnpm": {
+    "overrides": {
+      "koa": ">=2.15.4"
+    },
     "onlyBuiltDependencies": [
       "@nestjs/core",
       "@prisma/client",
