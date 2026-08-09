@@ -6,7 +6,7 @@
 2. Install dependencies: `pnpm install`
 3. Copy environment: `cp .env.example .env`
 4. Start infrastructure: `docker compose up -d postgres redis`
-5. Push database schema: `cd packages/database && npx prisma db push`
+5. Push database schema: `pnpm nx run database:push`
 6. Start dev servers: `pnpm dev:gateway` and `pnpm dev:dashboard`
 
 ## Commit Convention
