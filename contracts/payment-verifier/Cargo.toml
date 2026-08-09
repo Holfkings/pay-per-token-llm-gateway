@@ -20,6 +20,7 @@ debug = 0
 strip = "symbols"
 codegen-units = 1
 panic = "abort"
+overflow-checks = true
 
 [features]
 default = []

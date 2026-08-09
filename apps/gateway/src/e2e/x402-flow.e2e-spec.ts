@@ -218,7 +218,6 @@ function createHorizonAndLLMFetch() {
       let amount = '1000000';
       let to = PW;
       if (txId === TX4) { amount = '500000'; to = PW2; }
-      if (txId === TX_CROSS) { amount = '2000000'; to = PW; }
       return {
         ok: true,
         status: 200,

@@ -40,7 +40,8 @@ export class PaymentsService {
         amount: BigInt(quote.amount),
         asset: quote.asset,
         status: 'pending',
-        receiptJson: quote as unknown as Record<string, unknown>,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        receiptJson: quote as any,
       },
     });
 
@@ -75,7 +76,8 @@ export class PaymentsService {
         status: 'confirmed',
         verifiedAt: new Date(verification.timestamp * 1000),
         ledger: verification.ledger,
-        receiptJson: receipt as unknown as Record<string, unknown>,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        receiptJson: receipt as any,
       },
     });
 
@@ -181,7 +183,8 @@ export class PaymentsService {
     await prisma.payment.updateMany({
       where: { quoteId },
       data: {
-        receiptJson: updatedReceipt as Record<string, unknown>,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        receiptJson: updatedReceipt as any,
       },
     });
 
