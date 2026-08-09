@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#1f2937"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="accent-light" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#60a5fa"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#bg)" stroke="url(#accent)" stroke-width="3"/>
+
+  <!-- Inner ring -->
+  <circle cx="256" cy="220" r="120" fill="none" stroke="url(#accent)" stroke-width="4" opacity="0.3"/>
+
+  <!-- Stellar-like star / node -->
+  <g transform="translate(256, 220)">
+    <!-- Center circle -->
+    <circle cx="0" cy="0" r="20" fill="url(#accent)"/>
+
+    <!-- Four connection lines (like x402 network) -->
+    <line x1="0" y1="-20" x2="0" y2="-80" stroke="url(#accent)" stroke-width="4" stroke-linecap="round"/>
+    <line x1="20" y1="0" x2="80" y2="0" stroke="url(#accent)" stroke-width="4" stroke-linecap="round"/>
+    <line x1="-20" y1="0" x2="-80" y2="0" stroke="url(#accent)" stroke-width="4" stroke-linecap="round"/>
+    <line x1="14" y1="-14" x2="57" y2="-57" stroke="url(#accent-light)" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+    <line x1="-14" y1="-14" x2="-57" y2="-57" stroke="url(#accent-light)" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+    <line x1="14" y1="14" x2="57" y2="57" stroke="url(#accent-light)" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+    <line x1="-14" y1="14" x2="-57" y2="57" stroke="url(#accent-light)" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+
+    <!-- Endpoint dots -->
+    <circle cx="0" cy="-80" r="10" fill="url(#accent)"/>
+    <circle cx="80" cy="0" r="10" fill="url(#accent)"/>
+    <circle cx="-80" cy="0" r="10" fill="url(#accent)"/>
+    <circle cx="57" cy="-57" r="7" fill="url(#accent-light)" opacity="0.7"/>
+    <circle cx="-57" cy="-57" r="7" fill="url(#accent-light)" opacity="0.7"/>
+    <circle cx="57" cy="57" r="7" fill="url(#accent-light)" opacity="0.7"/>
+    <circle cx="-57" cy="57" r="7" fill="url(#accent-light)" opacity="0.7"/>
+  </g>
+
+  <!-- x402 text -->
+  <text x="256" y="390" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="800" font-size="64" fill="url(#accent)" letter-spacing="-1">x402</text>
+
+  <!-- Subtitle -->
+  <text x="256" y="430" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="500" font-size="20" fill="#9ca3af" letter-spacing="4">LLM GATEWAY</text>
+</svg>
