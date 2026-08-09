@@ -1,0 +1,16 @@
+echo "🔍 Running full test suite before push..."
+
+echo ""
+echo "── Lint ──"
+pnpm exec nx run-many --target=lint --all || { echo "❌ Lint failed — push aborted"; exit 1; }
+
+echo ""
+echo "── Unit Tests ──"
+pnpm exec nx run-many --target=test --all || { echo "❌ Tests failed — push aborted"; exit 1; }
+
+echo ""
+echo "── E2E Tests ──"
+pnpm nx run gateway:test:e2e || { echo "❌ E2E tests failed — push aborted"; exit 1; }
+
+echo ""
+echo "✅ All tests passed — pushing..."
