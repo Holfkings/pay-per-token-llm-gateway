@@ -41,7 +41,7 @@ export class AuthController {
   @Post('verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify a signed challenge and get a session token' })
-  verifyChallenge(
+  async verifyChallenge(
     @Body('challengeId') challengeId: string,
     @Body('address') address: string,
     @Body('signature') signature: string,
@@ -50,7 +50,7 @@ export class AuthController {
       throw new BadRequestException('challengeId, address, and signature are required');
     }
 
-    const result = this.authService.verifyChallenge(challengeId, address, signature);
+    const result = await this.authService.verifyChallenge(challengeId, address, signature);
 
     if (!result.verified) {
       throw new UnauthorizedException(result.error);
@@ -65,9 +65,9 @@ export class AuthController {
    */
   @Get('session')
   @ApiOperation({ summary: 'Validate current session' })
-  validateSession(@Headers('authorization') authHeader: string) {
+  async validateSession(@Headers('authorization') authHeader: string) {
     const token = this.extractToken(authHeader);
-    const result = this.authService.validateToken(token);
+    const result = await this.authService.validateToken(token);
 
     if (!result.valid) {
       throw new UnauthorizedException(result.error);
@@ -85,9 +85,9 @@ export class AuthController {
   @Delete('session')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'End current session (logout)' })
-  destroySession(@Headers('authorization') authHeader: string) {
+  async destroySession(@Headers('authorization') authHeader: string) {
     const token = this.extractToken(authHeader);
-    const result = this.authService.validateToken(token);
+    const result = await this.authService.validateToken(token);
 
     if (!result.valid) {
       throw new UnauthorizedException(result.error);

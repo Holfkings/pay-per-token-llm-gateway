@@ -1,12 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
-import {
-  createAuthChallenge,
-  verifyAuthChallenge,
-  createSession,
-  validateSession,
-  destroySession,
-} from '@x402/authentication';
+import { AuthStore, type AuthRedisLike } from '@x402/authentication';
 import { getConfig } from '@x402/config';
 import { logger } from '@x402/logger';
 
@@ -19,11 +13,17 @@ export interface AuthTokenPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly authStore: AuthStore;
+
+  constructor(@Inject('REDIS') redis: AuthRedisLike) {
+    this.authStore = new AuthStore(redis);
+  }
+
   /**
    * Create a challenge for wallet-based authentication.
    */
-  createChallenge(address: string) {
-    const result = createAuthChallenge(address);
+  async createChallenge(address: string) {
+    const result = await this.authStore.createChallenge(address);
     logger.info('Auth challenge created', {
       challengeId: result.challengeId,
       address,
@@ -35,15 +35,15 @@ export class AuthService {
    * Verify a signed challenge and return a JWT session token.
    * In development mode, accepts dev signatures for testing without wallet extensions.
    */
-  verifyChallenge(
+  async verifyChallenge(
     challengeId: string,
     address: string,
     signature: string,
-  ): {
+  ): Promise<{
     verified: boolean;
     token?: string;
     error?: string;
-  } {
+  }> {
     const config = getConfig();
 
     // Dev mode: accept dev-sig- prefixed signatures for testing
@@ -51,19 +51,19 @@ export class AuthService {
 
     const result = isDevSignature
       ? { verified: true as const }
-      : verifyAuthChallenge(challengeId, address, signature);
+      : await this.authStore.verifyChallenge(challengeId, address, signature);
 
     if (!result.verified) {
       logger.warn('Auth challenge verification failed', {
         challengeId,
         address,
-        error: 'error' in result ? (result as any).error : undefined,
+        error: 'error' in result ? (result as { error?: string }).error : undefined,
       });
       return result;
     }
 
     // Create a session and sign a JWT
-    const session = createSession(address, config.security.sessionDuration);
+    const session = await this.authStore.createSession(address, config.security.sessionDuration);
 
     const payload: AuthTokenPayload = {
       sessionId: session.sessionId,
@@ -85,19 +85,19 @@ export class AuthService {
   /**
    * Validate a JWT token and return the session info.
    */
-  validateToken(token: string): {
+  async validateToken(token: string): Promise<{
     valid: boolean;
     address?: string;
     sessionId?: string;
     error?: string;
-  } {
+  }> {
     const config = getConfig();
 
     try {
       const payload = jwt.verify(token, config.security.jwtSecret) as AuthTokenPayload;
 
-      // Also validate the in-memory session
-      const session = validateSession(payload.sessionId);
+      // Validate the session in the store (Redis or in-memory)
+      const session = await this.authStore.validateSession(payload.sessionId);
       if (!session) {
         return { valid: false, error: 'Session expired or not found' };
       }
@@ -118,8 +118,8 @@ export class AuthService {
   /**
    * Destroy a session (logout).
    */
-  destroySession(sessionId: string): void {
-    destroySession(sessionId);
+  async destroySession(sessionId: string): Promise<void> {
+    await this.authStore.destroySession(sessionId);
     logger.info('Session destroyed', { sessionId });
   }
 }
