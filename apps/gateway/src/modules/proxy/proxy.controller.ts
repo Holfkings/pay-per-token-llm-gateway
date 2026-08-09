@@ -69,8 +69,9 @@ export class ProxyController {
       const body = parseResult.data;
       const model = body.model;
 
-      // 2. Look up route — use the actual request path, not hardcoded
-      const route = await this.routesService.findByPathAndModel(req.path, model);
+      // 2. Look up route — strip global prefix from req.path for matching
+      const routePath = req.path.replace(/^\/api\/v1/, '') || req.path;
+      const route = await this.routesService.findByPathAndModel(routePath, model);
       if (!route) {
         return res.status(404).json({
           status: 404,
