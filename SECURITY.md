@@ -6,7 +6,7 @@ If you discover a security vulnerability in the x402 LLM Gateway, please report 
 
 **Do not open a public GitHub issue.**
 
-Instead, email `security@x402.example.com` with:
+Instead, [open a private security advisory](https://github.com/Pay-Per-Token-LLM-Gateway/pay-per-token-llm-gateway/security/advisories/new) or email the maintainers with:
 
 - Description of the vulnerability
 - Steps to reproduce
