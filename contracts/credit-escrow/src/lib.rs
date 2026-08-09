@@ -191,33 +191,40 @@ impl CreditEscrow {
 mod test {
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::token::StellarAssetClient;
 
-    fn setup(env: &Env) -> (Address, Address, CreditEscrowClient) {
+    fn setup(env: &Env) -> (Address, Address, Address, CreditEscrowClient) {
         let admin = Address::generate(env);
         let user = Address::generate(env);
-        let asset = Address::generate(env);
+
+        // Deploy a real Stellar Asset Contract instead of a mock address
+        let token_admin = Address::generate(env);
+        let asset = env.register_stellar_asset_contract(token_admin);
 
         let contract_id = env.register_contract(None, CreditEscrow);
         let client = CreditEscrowClient::new(env, &contract_id);
         client.init(&admin, &asset);
 
-        (admin, user, client)
+        (admin, user, asset, client)
     }
 
     #[test]
     fn test_initial_balance_is_zero() {
         let env = Env::default();
-        let (_, user, client) = setup(&env);
+        let (_, user, _asset, client) = setup(&env);
         assert_eq!(client.balance(&user), 0);
     }
 
     #[test]
     fn test_deposit_increases_balance() {
         let env = Env::default();
-        let (admin, user, client) = setup(&env);
+        let (_admin, user, asset, client) = setup(&env);
 
-        // The test harness mocks token transfers, so we test balance tracking directly
-        // by invoking deposit (the token transfer will succeed in the test context)
+        // Mint tokens to the user so the SAC transfer succeeds
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
+
         client.mock_all_auths().deposit(&user, &500_000_000i128);
 
         assert_eq!(client.balance(&user), 500_000_000i128);
@@ -226,7 +233,11 @@ mod test {
     #[test]
     fn test_multiple_deposits_accumulate() {
         let env = Env::default();
-        let (admin, user, client) = setup(&env);
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
 
         client.mock_all_auths().deposit(&user, &100_000_000i128);
         client.mock_all_auths().deposit(&user, &200_000_000i128);
@@ -238,7 +249,11 @@ mod test {
     #[test]
     fn test_withdraw_reduces_balance() {
         let env = Env::default();
-        let (admin, user, client) = setup(&env);
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
 
         client.mock_all_auths().deposit(&user, &500_000_000i128);
 
@@ -252,7 +267,11 @@ mod test {
     #[should_panic(expected = "Insufficient balance")]
     fn test_withdraw_exceeding_balance_panics() {
         let env = Env::default();
-        let (admin, user, client) = setup(&env);
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &500_000_000i128);
 
         client.mock_all_auths().deposit(&user, &100_000_000i128);
         client.mock_all_auths().withdraw(&user, &200_000_000i128);
@@ -261,7 +280,11 @@ mod test {
     #[test]
     fn test_charge_deducts_balance() {
         let env = Env::default();
-        let (admin, user, client) = setup(&env);
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
 
         // Deposit some credits
         client.mock_all_auths().deposit(&user, &500_000_000i128);
@@ -279,7 +302,11 @@ mod test {
     #[should_panic(expected = "Insufficient prepaid balance")]
     fn test_charge_exceeding_balance_panics() {
         let env = Env::default();
-        let (admin, user, client) = setup(&env);
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &500_000_000i128);
 
         client.mock_all_auths().deposit(&user, &100_000_000i128);
 
@@ -292,7 +319,11 @@ mod test {
     #[test]
     fn test_usage_history_recorded() {
         let env = Env::default();
-        let (admin, user, client) = setup(&env);
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &2_000_000_000i128);
 
         client.mock_all_auths().deposit(&user, &1_000_000_000i128);
 
@@ -317,13 +348,18 @@ mod test {
     #[test]
     fn test_usage_pagination() {
         let env = Env::default();
-        let (admin, user, client) = setup(&env);
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &2_000_000_000i128);
 
         client.mock_all_auths().deposit(&user, &1_000_000_000i128);
 
         // Create 5 charges
         for i in 0..5 {
-            let quote = String::from_str(&env, &format!("quote-{:03}", i));
+            let quote_str = ["quote-000", "quote-001", "quote-002", "quote-003", "quote-004"][i as usize];
+            let quote = String::from_str(&env, quote_str);
             client
                 .mock_all_auths()
                 .charge(&user, &(10_000_000 * (i + 1) as i128), &quote);
@@ -343,8 +379,15 @@ mod test {
     #[test]
     fn test_independent_user_balances() {
         let env = Env::default();
-        let (admin, user1, asset, client) = setup(&env);
+        let (_admin, user1, asset, client) = setup(&env);
         let user2 = Address::generate(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user1, &1_000_000_000i128);
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user2, &1_000_000_000i128);
 
         client.mock_all_auths().deposit(&user1, &300_000_000i128);
         client.mock_all_auths().deposit(&user2, &700_000_000i128);
@@ -358,7 +401,8 @@ mod test {
     fn test_double_init_panics() {
         let env = Env::default();
         let admin = Address::generate(&env);
-        let asset = Address::generate(&env);
+        let token_admin = Address::generate(&env);
+        let asset = env.register_stellar_asset_contract(token_admin);
 
         let contract_id = env.register_contract(None, CreditEscrow);
         let client = CreditEscrowClient::new(&env, &contract_id);
