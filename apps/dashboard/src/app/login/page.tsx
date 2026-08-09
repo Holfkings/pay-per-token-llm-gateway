@@ -193,9 +193,10 @@ async function getWalletAddress(type: WalletType): Promise<string | null> {
       return pubKey;
     }
 
-    // Development fallback: use a test wallet address
-    // (only in development mode where no wallet extension is available)
-    if (process.env.NODE_ENV === 'development' || typeof window.freighterApi === 'undefined') {
+    // Development fallback: use a test wallet address.
+    // This is ONLY allowed when explicitly in development mode — in production,
+    // a missing wallet extension means the user cannot authenticate.
+    if (process.env.NODE_ENV === 'development') {
       console.warn(`[x402] No ${type} wallet extension detected. Using dev mode address.`);
       return 'GA5ZSE6VKPVFLEXMWJQBGHE4FJHKQIFSJMLQ7H4VFQB4UHLEH5IOVK3F';
     }
@@ -228,10 +229,17 @@ async function signChallenge(
       return result.signature;
     }
 
-    // Development fallback: return a mock signature
-    // In production, the wallet API handles this
-    console.warn(`[x402] No ${type} wallet for signing. Using dev mode signature.`);
-    return Buffer.from(`dev-sig-${address}-${Date.now()}`, 'utf-8').toString('base64');
+    // Development fallback: return a mock signature.
+    // This is ONLY allowed in development mode — in production,
+    // a missing wallet means the user cannot sign.
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`[x402] No ${type} wallet for signing. Using dev mode signature.`);
+      return Buffer.from(`dev-sig-${address}-${Date.now()}`, 'utf-8').toString('base64');
+    }
+
+    throw new Error(
+      `No ${type} wallet detected. Please install the ${type} browser extension to sign in.`,
+    );
   } catch (err) {
     throw new Error(`Failed to sign with ${type}: ${(err as Error).message}`);
   }

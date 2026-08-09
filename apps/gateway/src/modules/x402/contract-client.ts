@@ -81,15 +81,18 @@ export async function isPaymentUsedOnChain(
       durability: 'persistent',
     };
 
-    const result = await sorobanRpcCall<GetLedgerEntriesResult>(
-      rpcUrl,
-      'getLedgerEntries',
-      { keys: [key] },
-    );
+    const result = await sorobanRpcCall<GetLedgerEntriesResult>(rpcUrl, 'getLedgerEntries', {
+      keys: [key],
+    });
 
     return !!(result?.entries && result.entries.length > 0);
-  } catch {
-    // If the contract is unreachable, assume not used (fall back to Redis)
+  } catch (err) {
+    // If the contract is unreachable, assume not used (fall back to Redis).
+    // Log the error so operators know the Soroban RPC is having issues.
+    console.warn(
+      `[x402] Contract client: isPaymentUsedOnChain failed for tx ${txHash.slice(0, 10)}... — ` +
+        `falling back to Redis-only replay protection. Error: ${(err as Error).message}`,
+    );
     return false;
   }
 }

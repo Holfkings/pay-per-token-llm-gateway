@@ -5,8 +5,84 @@ import { getConfig } from '@x402/config';
 import { logger } from '@x402/logger';
 import { retry } from '@x402/shared';
 
+// ── Circuit Breaker ──────────────────────────
+
+interface CircuitState {
+  failures: number;
+  lastFailureTime: number;
+  open: boolean;
+}
+
+/**
+ * Simple in-memory circuit breaker per upstream URL.
+ *
+ * After N consecutive failures, the circuit opens and immediately rejects
+ * all calls for a cooldown period. After the cooldown, one test call is
+ * allowed (half-open). If it succeeds, the circuit closes.
+ */
+class CircuitBreaker {
+  private readonly circuits = new Map<string, CircuitState>();
+
+  constructor(
+    private readonly failureThreshold = 5,
+    private readonly cooldownMs = 30_000,
+  ) {}
+
+  /**
+   * Check if a request to `upstreamUrl` is allowed.
+   * Throws if the circuit is open.
+   */
+  checkCircuit(upstreamUrl: string): void {
+    const circuit = this.circuits.get(upstreamUrl);
+    if (!circuit?.open) return;
+
+    const elapsed = Date.now() - circuit.lastFailureTime;
+    if (elapsed >= this.cooldownMs) {
+      // Half-open: allow one test call
+      circuit.open = false;
+      logger.warn('Circuit half-open — allowing test call', { upstreamUrl });
+      return;
+    }
+
+    const retryIn = Math.ceil((this.cooldownMs - elapsed) / 1000);
+    throw new Error(`Circuit breaker open for ${upstreamUrl}. Retry in ${retryIn}s.`);
+  }
+
+  /** Record a successful call — reset the circuit. */
+  recordSuccess(upstreamUrl: string): void {
+    this.circuits.delete(upstreamUrl);
+  }
+
+  /** Record a failed call — increment failure count and possibly open circuit. */
+  recordFailure(upstreamUrl: string): void {
+    const circuit = this.circuits.get(upstreamUrl) || {
+      failures: 0,
+      lastFailureTime: 0,
+      open: false,
+    };
+
+    circuit.failures++;
+    circuit.lastFailureTime = Date.now();
+
+    if (circuit.failures >= this.failureThreshold) {
+      circuit.open = true;
+      logger.error('Circuit breaker opened', {
+        upstreamUrl,
+        failures: circuit.failures,
+        cooldownMs: this.cooldownMs,
+      });
+    }
+
+    this.circuits.set(upstreamUrl, circuit);
+  }
+}
+
+// ── Proxy Service ────────────────────────────
+
 @Injectable()
 export class ProxyService {
+  private readonly circuitBreaker = new CircuitBreaker();
+
   /**
    * Forward a request to the upstream LLM endpoint (non-streaming).
    */
@@ -19,45 +95,55 @@ export class ProxyService {
     const config = getConfig();
     const startTime = Date.now();
 
-    const response = await retry(
-      async () => {
-        const res = await fetch(upstreamUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(traceId ? { 'X-Request-Trace-Id': traceId } : {}),
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          body: JSON.stringify(request),
-          signal: AbortSignal.timeout(config.llm.requestTimeout),
-        });
+    // Circuit breaker check — fast-fail if the upstream has been failing
+    this.circuitBreaker.checkCircuit(upstreamUrl);
 
-        if (!res.ok) {
-          const errorBody = await res.text();
-          throw new Error(`Upstream error: ${res.status} ${errorBody}`);
-        }
+    try {
+      const response = await retry(
+        async () => {
+          const res = await fetch(upstreamUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(traceId ? { 'X-Request-Trace-Id': traceId } : {}),
+              ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            },
+            body: JSON.stringify(request),
+            signal: AbortSignal.timeout(config.llm.requestTimeout),
+          });
 
-        return res;
-      },
-      {
-        maxAttempts: config.llm.maxRetries,
-        baseDelayMs: 1000,
-        onRetry: (attempt, error) => {
-          logger.warn(`Retrying upstream call (attempt ${attempt})`, { error: error.message });
+          if (!res.ok) {
+            const errorBody = await res.text();
+            throw new Error(`Upstream error: ${res.status} ${errorBody}`);
+          }
+
+          return res;
         },
-      },
-    );
+        {
+          maxAttempts: config.llm.maxRetries,
+          baseDelayMs: 1000,
+          onRetry: (attempt, error) => {
+            logger.warn(`Retrying upstream call (attempt ${attempt})`, { error: error.message });
+          },
+        },
+      );
 
-    const data = (await response.json()) as ChatCompletionResponse;
-    const responseTime = Date.now() - startTime;
+      this.circuitBreaker.recordSuccess(upstreamUrl);
 
-    logger.info('Upstream request completed', {
-      model: request.model,
-      responseTime,
-      tokens: data.usage?.total_tokens,
-    });
+      const data = (await response.json()) as ChatCompletionResponse;
+      const responseTime = Date.now() - startTime;
 
-    return { response: data, responseTime };
+      logger.info('Upstream request completed', {
+        model: request.model,
+        responseTime,
+        tokens: data.usage?.total_tokens,
+      });
+
+      return { response: data, responseTime };
+    } catch (error) {
+      this.circuitBreaker.recordFailure(upstreamUrl);
+      throw error;
+    }
   }
 
   /**
@@ -78,30 +164,42 @@ export class ProxyService {
     const config = getConfig();
     const startTime = Date.now();
 
+    // Circuit breaker check — fast-fail if the upstream has been failing
+    this.circuitBreaker.checkCircuit(upstreamUrl);
+
     // Use configured streaming timeout (defaults to 10 minutes)
     const streamTimeout = config.llm.streamTimeout ?? 600_000;
 
     // AbortController for client-disconnect propagation to upstream
     const abortController = new AbortController();
 
-    const upstreamRes = await fetch(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        ...(traceId ? { 'X-Request-Trace-Id': traceId } : {}),
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({ ...request, stream: true }),
-      signal: abortController.signal,
-    });
-
-    if (!upstreamRes.ok) {
-      const errorBody = await upstreamRes.text();
-      throw new Error(`Upstream error: ${upstreamRes.status} ${errorBody}`);
+    let upstreamResponse: globalThis.Response;
+    try {
+      upstreamResponse = await fetch(upstreamUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...(traceId ? { 'X-Request-Trace-Id': traceId } : {}),
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({ ...request, stream: true }),
+        signal: abortController.signal,
+      });
+    } catch (err) {
+      this.circuitBreaker.recordFailure(upstreamUrl);
+      throw err;
     }
 
-    if (!upstreamRes.body) {
+    if (!upstreamResponse.ok) {
+      const errorBody = await upstreamResponse.text();
+      this.circuitBreaker.recordFailure(upstreamUrl);
+      throw new Error(`Upstream error: ${upstreamResponse.status} ${errorBody}`);
+    }
+
+    this.circuitBreaker.recordSuccess(upstreamUrl);
+
+    if (!upstreamResponse.body) {
       throw new Error('Upstream returned no response body for streaming');
     }
 
@@ -112,7 +210,7 @@ export class ProxyService {
     res.setHeader('X-Accel-Buffering', 'no'); // disable nginx buffering
     res.flushHeaders(); // send headers immediately
 
-    const reader = upstreamRes.body.getReader();
+    const reader = upstreamResponse.body.getReader();
     let totalTokens: number | undefined;
     let aborted = false;
 
@@ -177,6 +275,7 @@ export class ProxyService {
       }
     } catch (err) {
       if (!aborted) {
+        this.circuitBreaker.recordFailure(upstreamUrl);
         logger.error('Stream forwarding error', { error: String(err) });
         if (!res.writableEnded) {
           try {
@@ -216,6 +315,10 @@ export class ProxyService {
   validateRequest(request: unknown): request is ChatCompletionRequest {
     if (!request || typeof request !== 'object') return false;
     const r = request as Record<string, unknown>;
-    return typeof r.model === 'string' && Array.isArray(r.messages) && (r.messages as unknown[]).length > 0;
+    return (
+      typeof r.model === 'string' &&
+      Array.isArray(r.messages) &&
+      (r.messages as unknown[]).length > 0
+    );
   }
 }

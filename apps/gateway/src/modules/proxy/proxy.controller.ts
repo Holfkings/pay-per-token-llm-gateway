@@ -218,10 +218,33 @@ export class ProxyController {
       return true;
     }
 
-    const quote = await this.x402Service.generateQuoteForRoute(route);
-    const quoteForVerification = existingPayment?.receiptJson
+    // Use the original quote from the pending payment, or generate a new one.
+    // CRITICAL: if the original quote has expired, reject even if the payment
+    // was technically on-chain — the quote window is a security boundary.
+    const storedQuote = existingPayment?.receiptJson
       ? (existingPayment.receiptJson as Quote)
-      : quote;
+      : null;
+
+    if (storedQuote && this.x402Service.isQuoteExpired(storedQuote)) {
+      logger.warn('Payment made with expired quote', {
+        traceId,
+        txHash,
+        quoteId: storedQuote.id,
+        expiresAt: storedQuote.expiresAt,
+        now: Date.now() / 1000,
+      });
+      res.status(402).json({
+        status: 402,
+        error: 'Payment Required',
+        message: 'The payment quote has expired. Please request a new quote and pay again.',
+      });
+      return false;
+    }
+
+    // If no stored quote exists, generate one for verification.
+    // (This handles the case where a payment arrives without a prior 402 quote.)
+    const quoteForVerification =
+      storedQuote ?? (await this.x402Service.generateQuoteForRoute(route));
 
     const verification = await this.x402Service.verifyPayment(txHash, quoteForVerification);
 
@@ -264,8 +287,8 @@ export class ProxyController {
     if (existingPayment) {
       await this.paymentsService.confirmPayment(existingPayment.quoteId, verification);
     } else {
-      await this.paymentsService.createPendingPayment(quote, route);
-      await this.paymentsService.confirmPayment(quote.id, verification);
+      await this.paymentsService.createPendingPayment(quoteForVerification, route);
+      await this.paymentsService.confirmPayment(quoteForVerification.id, verification);
     }
 
     await this.adminService.writeAuditLog({
