@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="apps/dashboard/public/icon.svg" alt="x402 Logo" width="120" />
+</p>
+
 # x402 LLM Gateway
 
 **Pay-per-request LLM gateway using x402 stablecoin micropayments on Stellar.**
@@ -109,7 +113,7 @@ cd x402-llm-gateway
 pnpm install
 
 # Generate Prisma client
-cd packages/database && npx prisma generate && cd ../..
+pnpm nx run database:generate
 
 # Copy environment
 cp .env.example .env
@@ -126,7 +130,7 @@ docker compose -f infrastructure/docker/docker-compose.yml up -d postgres redis
 
 ```bash
 # Push schema to database
-cd packages/database && npx prisma db push && cd ../..
+pnpm nx run database:push
 ```
 
 ### 4. Run the Gateway
