@@ -27,15 +27,17 @@ export function Sidebar() {
   return (
     <aside className="w-64 border-r border-border bg-card/30 shrink-0 hidden lg:flex flex-col">
       <div className="p-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center shadow-lg shadow-green-500/20">
-            <span className="text-white font-bold text-lg">x4</span>
-          </div>
+        <Link href="/" className="flex items-center gap-3 group">
+          <img
+            src="/icon.svg"
+            alt="x402 Logo"
+            className="w-10 h-10 rounded-xl shadow-lg shadow-green-500/20 transition-transform group-hover:scale-105"
+          />
           <div>
-            <h1 className="font-bold text-lg tracking-tight">x402</h1>
+            <h1 className="font-bold text-lg tracking-tight group-hover:text-green-400 transition-colors">x402</h1>
             <p className="text-xs text-muted-foreground">LLM Gateway</p>
           </div>
-        </div>
+        </Link>
       </div>
 
       <nav className="flex-1 px-3 space-y-1">

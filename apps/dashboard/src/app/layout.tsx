@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   title: 'x402 Gateway - Provider Dashboard',
   description:
     'Manage your LLM endpoints, track revenue, and configure pricing — all through x402 micropayments on Stellar.',
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

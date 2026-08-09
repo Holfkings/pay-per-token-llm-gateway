@@ -9,9 +9,7 @@ export function Navbar() {
   return (
     <header className="h-16 border-b border-border bg-card/50 backdrop-blur-sm flex items-center justify-between px-6 shrink-0">
       <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center">
-          <span className="text-white font-bold text-sm">x</span>
-        </div>
+        <img src="/icon.svg" alt="x402" className="w-8 h-8 rounded-lg" />
         <span className="font-semibold text-lg">x402 Gateway</span>
         <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/30 text-green-400 border border-green-800/50 ml-2">
           Testnet
