@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Wallet, ArrowRight, Shield, Zap, Loader2, AlertTriangle } from 'lucide-react';
+import { Wallet, ArrowRight, Shield, Loader2, AlertTriangle } from 'lucide-react';
 import { requestChallenge, verifyChallenge, setSessionToken, setWalletAddress } from '@/lib/api';
 
 type WalletType = 'freighter' | 'xbull' | 'albedo';
@@ -80,9 +80,11 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center mx-auto mb-4 shadow-xl shadow-green-500/20">
-            <Zap className="w-8 h-8 text-white" />
-          </div>
+          <img
+            src="/icon.svg"
+            alt="x402 Logo"
+            className="w-20 h-20 mx-auto mb-4 rounded-2xl shadow-xl shadow-green-500/20"
+          />
           <h1 className="text-2xl font-bold">x402 Gateway</h1>
           <p className="text-muted-foreground mt-2">
             Connect your Stellar wallet to manage your LLM endpoints
