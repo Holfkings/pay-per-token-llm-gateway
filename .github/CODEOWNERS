@@ -1,0 +1,19 @@
+# x402 LLM Gateway — Code Owners
+#
+# These owners will automatically be requested for review
+# when someone opens a PR that touches the matching paths.
+#
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global fallback
+* @scarface-dev1
+
+# Soroban contracts (Rust)
+contracts/ @scarface-dev1
+
+# CI / deployment workflows
+.github/workflows/ @scarface-dev1
+infrastructure/ @scarface-dev1
+
+# Documentation
+*.md @scarface-dev1
