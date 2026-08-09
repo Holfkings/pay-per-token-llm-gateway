@@ -44,8 +44,8 @@ services:
       HORIZON_URL: https://horizon-testnet.stellar.org
       SOROBAN_RPC_URL: https://soroban-testnet.stellar.org
       USDC_ISSUER: GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
-      JWT_SECRET: change-me-in-production
-      CORS_ORIGINS: http://localhost:3001
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001,https://x402-dashboard.vercel.app}
     depends_on:
       postgres:
         condition: service_healthy
