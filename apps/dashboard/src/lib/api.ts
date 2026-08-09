@@ -270,6 +270,15 @@ export function fetchAuditLogs(params?: {
   return request<PaginatedAuditLogs>(`/admin/audit${query ? `?${query}` : ''}`);
 }
 
+// ── Webhooks ─────────────────────────────────
+
+export function sendWebhookTest(webhookUrl: string): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>('/webhooks/test', {
+    method: 'POST',
+    body: JSON.stringify({ webhookUrl }),
+  });
+}
+
 // ── Providers ────────────────────────────────
 
 export interface ProviderResponse {

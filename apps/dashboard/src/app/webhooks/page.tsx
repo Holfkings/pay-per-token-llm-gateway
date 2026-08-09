@@ -1,57 +1,64 @@
 'use client';
 
-import { Webhook, Plus, Globe, Loader2, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Webhook, Plus, Globe, Loader2, AlertTriangle, RefreshCw, Send, CheckCircle } from 'lucide-react';
+import { useState } from 'react';
+import { sendWebhookTest } from '@/lib/api';
 
-interface WebhookConfig {
-  id: string;
-  url: string;
-  events: string[];
-  active: boolean;
-  lastSent: string | null;
-}
+const SUPPORTED_EVENTS = ['payment_received', 'request_forwarded', 'verification_failed'] as const;
 
-/**
- * Webhook management page.
- *
- * Webhook CRUD endpoints are not yet exposed by the gateway API.
- * This page renders a polished empty state with documentation about
- * supported event types. Once the API is available, swap to useQuery
- * with fetchWebhooks() from @/lib/api.
- */
 export default function WebhooksPage() {
-  const [webhooks] = useState<WebhookConfig[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [url, setUrl] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        // When the webhook CRUD API is available, replace with:
-        // const result = await fetchWebhooks();
-        // if (!cancelled) setWebhooks(result);
-        await new Promise((r) => setTimeout(r, 800));
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const reload = () => {
-    setLoading(true);
+  const handleAdd = () => {
+    setShowAdd(true);
+    setUrl('');
+    setTestResult(null);
     setError(null);
-    setTimeout(() => {
-      setLoading(false);
-    }, 800);
+  };
+
+  const handleCancel = () => {
+    setShowAdd(false);
+    setTestResult(null);
+    setError(null);
+  };
+
+  const handleTest = async () => {
+    if (!url.trim()) {
+      setError('Please enter a webhook URL');
+      return;
+    }
+
+    try {
+      new URL(url);
+    } catch {
+      setError('Please enter a valid URL (e.g., https://example.com/webhook)');
+      return;
+    }
+
+    setTesting(true);
+    setError(null);
+    setTestResult(null);
+
+    try {
+      const result = await sendWebhookTest(url.trim());
+      setTestResult({
+        success: result.success,
+        message: result.success
+          ? 'Test webhook sent successfully! Check your endpoint for the test payload.'
+          : 'Webhook delivery failed. Verify the URL is correct and reachable.',
+      });
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: (err as Error).message,
+      });
+    } finally {
+      setTesting(false);
+    }
   };
 
   return (
@@ -64,8 +71,8 @@ export default function WebhooksPage() {
           </p>
         </div>
         <button
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors text-sm font-medium"
+          onClick={handleAdd}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
         >
           <Plus className="w-4 h-4" /> Add Webhook
         </button>
@@ -78,89 +85,113 @@ export default function WebhooksPage() {
               <AlertTriangle className="w-5 h-5 text-red-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-medium text-red-400">Failed to load webhooks</h3>
+              <h3 className="font-medium text-red-400">Error</h3>
               <p className="text-sm text-muted-foreground mt-1">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {testResult && (
+        <div className={`card border-${testResult.success ? 'green' : 'red'}-800/30 bg-${testResult.success ? 'green' : 'red'}-950/10`}>
+          <div className="flex items-start gap-3">
+            <div className={`p-2 bg-${testResult.success ? 'green' : 'red'}-900/20 rounded-lg shrink-0`}>
+              {testResult.success ? (
+                <CheckCircle className="w-5 h-5 text-green-400" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+              )}
+            </div>
+            <div className="flex-1">
+              <h3 className={`font-medium ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
+                {testResult.success ? 'Test Successful' : 'Test Failed'}
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">{testResult.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAdd && (
+        <div className="card border-green-800/30">
+          <h3 className="font-semibold mb-4">Add Webhook Endpoint</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Webhook URL</label>
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://your-service.com/webhook"
+                className="w-full px-3 py-2 bg-gray-900 border border-border rounded-lg text-sm focus:outline-none focus:border-green-500/50 transition-colors"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Your endpoint must accept POST requests with JSON payloads.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Supported Events</label>
+              <div className="flex flex-wrap gap-2">
+                {SUPPORTED_EVENTS.map((ev) => (
+                  <span key={ev} className="badge badge-green text-xs">
+                    {ev}
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                All webhook endpoints receive all event types. Filter on your server if needed.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
               <button
-                onClick={reload}
-                className="inline-flex items-center gap-1.5 mt-2 text-sm text-green-400 hover:text-green-300 transition-colors"
+                onClick={handleTest}
+                disabled={testing}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
               >
-                <RefreshCw className="w-3.5 h-3.5" /> Retry
+                {testing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                {testing ? 'Sending...' : 'Send Test'}
+              </button>
+              <button
+                onClick={handleCancel}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm font-medium transition-colors"
+              >
+                Cancel
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {loading ? (
-        <div className="card">
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <Loader2 className="w-8 h-8 text-green-400 animate-spin" />
-            <p className="text-sm text-muted-foreground">Loading webhooks...</p>
+      <div className="card">
+        <div className="flex flex-col items-center justify-center py-12 gap-4">
+          <div className="p-3 bg-gray-800 rounded-full">
+            <Globe className="w-8 h-8 text-gray-500" />
+          </div>
+          <div className="text-center max-w-md">
+            <h3 className="font-medium text-gray-300">Configure your webhooks</h3>
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              Webhooks let your application receive real-time notifications when events happen on
+              the gateway — like payments received, requests forwarded, or verification failures.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+              {SUPPORTED_EVENTS.map((ev) => (
+                <span key={ev} className="badge badge-green text-xs">
+                  {ev}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              Click &quot;Add Webhook&quot; to test and configure your endpoint.
+            </p>
           </div>
         </div>
-      ) : webhooks.length === 0 ? (
-        <div className="card">
-          <div className="flex flex-col items-center justify-center py-12 gap-4">
-            <div className="p-3 bg-gray-800 rounded-full">
-              <Globe className="w-8 h-8 text-gray-500" />
-            </div>
-            <div className="text-center max-w-md">
-              <h3 className="font-medium text-gray-300">No webhooks configured</h3>
-              <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                Webhooks let your application receive real-time notifications when events happen on
-                the gateway — like payments received, requests forwarded, or verification failures.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-                {['payment_received', 'request_forwarded', 'verification_failed'].map((ev) => (
-                  <span key={ev} className="badge badge-green text-xs">
-                    {ev}
-                  </span>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                Add your first webhook endpoint to start receiving these events.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {webhooks.map((wh) => (
-            <div key={wh.id} className="card group hover:border-green-800/30 transition-colors">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-900/20 rounded-lg">
-                    <Webhook className="w-5 h-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <span className="font-mono text-sm">{wh.url}</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      {wh.events.map((e) => (
-                        <span key={e} className="badge badge-green text-xs">
-                          {e}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`badge ${wh.active ? 'badge-green' : 'badge-red'}`}>
-                    {wh.active ? 'Active' : 'Inactive'}
-                  </span>
-                  {wh.lastSent ? (
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      Last sent: {new Date(wh.lastSent).toLocaleString()}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Never sent</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
