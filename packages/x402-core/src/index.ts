@@ -168,23 +168,12 @@ export async function verifyStellarPayment(
 
     const txData = (await response.json()) as Record<string, any>;
 
-    // If the quote carries a memo, the payment transaction must include it.
-    // This is what ties an on-chain payment to a specific quote (attribution).
-    if (quote.memo) {
-      const txMemo = String(txData.memo ?? '');
-      if (txData.memo_type !== 'text' || txMemo !== quote.memo) {
-        return {
-          verified: false,
-          txHash,
-          payerAddress: txData.source_account || '',
-          amount: '0',
-          asset: quote.asset,
-          ledger: txData.ledger || 0,
-          timestamp: Date.parse(txData.created_at) / 1000 || 0,
-          failureReason: `Payment is missing the required memo ${quote.memo}`,
-        };
-      }
-    }
+    // NOTE: quote memos are issued for on-chain attribution (the client pays
+    // with the memo, so payments are traceable to their quote), but they are
+    // NOT enforced here. The gateway's retry flow (402 → pay → X-Payment-Hash)
+    // verifies against a freshly generated quote, so a hard memo requirement
+    // would never match and would reject every valid payment. Replay
+    // protection (Redis + on-chain + DB single-use) is the access control.
 
     // Check transaction succeeded
     if (!txData.successful) {

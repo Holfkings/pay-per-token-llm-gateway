@@ -33,8 +33,10 @@ export class AdminController {
   async auditLogs(
     @CurrentWallet() wallet: string,
     @Query('providerId') providerId?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    // Express query params always arrive as strings; paginationSchema coerces
+    // them to numbers (and rejects NaN/negative via z.coerce + positive int).
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
     @Query('action') action?: string,
     @Query('entity') entity?: string,
   ) {

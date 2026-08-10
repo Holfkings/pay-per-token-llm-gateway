@@ -23,8 +23,10 @@ export class PaymentsController {
     @Query('providerId') providerId?: string,
     @Query('status') status?: string,
     @Query('payerAddress') payerAddress?: string,
-    @Query('page') page?: number,
-    @Query('limit') limit?: number,
+    // Express query params always arrive as strings; paginationSchema coerces
+    // them to numbers (and rejects NaN/negative via z.coerce + positive int).
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     // Validate/clamp pagination — raw query strings (e.g. page=abc, limit=-1)
     // previously reached Prisma as NaN/negative skip/take and 500'd.

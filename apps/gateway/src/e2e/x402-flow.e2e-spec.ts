@@ -437,27 +437,17 @@ describe('x402 Gateway E2E — Core Flow', () => {
     expect(typeof receipt.quoteId).toBe('string');
   });
 
-  it('rejects invalid payment hash', async () => {
-    const orig = global.fetch;
-    global.fetch = jest
-      .fn()
-      .mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }) as any;
-    try {
-      await request(app.getHttpServer())
-        .post('/api/v1/chat/completions')
-        .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }] })
-        .expect(402);
+  it('rejects a malformed payment hash header with 400', async () => {
+    // The gateway rejects garbage headers (wrong length / non-hex) before any
+    // Redis writes or Horizon lookups — malformed hashes never reach the
+    // verification path.
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/chat/completions')
+      .set('X-Payment-Hash', 'bad' + '0'.repeat(60)) // 63 chars, not 64-hex
+      .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }] })
+      .expect(400);
 
-      const res = await request(app.getHttpServer())
-        .post('/api/v1/chat/completions')
-        .set('X-Payment-Hash', 'bad' + '0'.repeat(60))
-        .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'Hi' }] })
-        .expect(402);
-
-      expect(res.body.message).toContain('verification failed');
-    } finally {
-      global.fetch = orig;
-    }
+    expect(res.body.message).toContain('Invalid X-Payment-Hash');
   });
 
   it('GET /api/v1/payments/:quoteId/status returns payment status', async () => {
@@ -1031,9 +1021,12 @@ describe('x402 Gateway E2E — Webhook Notifications', () => {
         .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'Fail webhook' }] })
         .expect(402);
 
+      // Well-formed 64-hex hash that does NOT exist on chain — the mock
+      // fetch 404s everything, so verification fails and the
+      // verification_failed webhook must fire.
       await request(app.getHttpServer())
         .post('/api/v1/chat/completions')
-        .set('X-Payment-Hash', 'bad' + 'f'.repeat(60))
+        .set('X-Payment-Hash', 'b' + 'f'.repeat(63))
         .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'Fail webhook' }] })
         .expect(402);
 

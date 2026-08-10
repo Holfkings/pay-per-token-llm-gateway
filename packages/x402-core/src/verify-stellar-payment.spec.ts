@@ -306,45 +306,9 @@ describe('verifyStellarPayment', () => {
     });
   });
 
-  describe('memo attribution', () => {
-    it('rejects a payment transaction missing the required quote memo', async () => {
-      const quote = makeQuote(makeRoute());
-      (global as any).fetch = mockHorizonFetch({
-        tx: txData({ memo_type: 'none', memo: undefined }),
-        ops: opsData([paymentOp({ amount: '0.1000000' })]),
-      });
-
-      const result = await verify({ quote });
-
-      expect(result.verified).toBe(false);
-      expect(result.failureReason).toBe(`Payment is missing the required memo ${quote.memo}`);
-    });
-
-    it('rejects a payment transaction with the wrong memo', async () => {
-      const quote = makeQuote(makeRoute());
-      (global as any).fetch = mockHorizonFetch({
-        tx: txData({ memo_type: 'text', memo: '000000000000000000000000' }),
-        ops: opsData([paymentOp({ amount: '0.1000000' })]),
-      });
-
-      const result = await verify({ quote });
-
-      expect(result.verified).toBe(false);
-      expect(result.failureReason).toBe(`Payment is missing the required memo ${quote.memo}`);
-    });
-
-    it('accepts a payment transaction carrying the correct memo', async () => {
-      const quote = makeQuote(makeRoute());
-      (global as any).fetch = mockHorizonFetch({
-        tx: txData({ memo_type: 'text', memo: quote.memo }),
-        ops: opsData([paymentOp({ amount: '0.1000000' })]),
-      });
-
-      const result = await verify({ quote });
-
-      expect(result.verified).toBe(true);
-    });
-  });
+  // Note: memo attribution is intentionally NOT enforced by the verifier —
+  // the gateway retry flow verifies against a fresh quote, so requiring the
+  // tx memo to match would reject every valid payment. See verifyStellarPayment.
 
   describe('flat-rate pricing', () => {
     it('verifies a flat-rate payment with an exact amount match (Horizon decimal units)', async () => {
