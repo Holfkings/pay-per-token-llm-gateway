@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@x402/database';
 import { logger } from '@x402/logger';
 import type {
@@ -49,12 +49,21 @@ export class PaymentsService {
   }
 
   /**
-   * Confirm a payment after successful verification.
+   * Atomically confirm a payment after successful verification.
+   *
+   * Single-use guarantee: the update only touches rows that are still
+   * un-consumed (`txHash IS NULL`) AND the schema enforces a partial unique
+   * index on `Payment.txHash`. Concurrent requests for the same transaction
+   * hash race here — exactly one claim wins; losers receive `null` and must
+   * reject the request as a replay.
+   *
+   * Returns the receipt when THIS caller won the claim, or `null` when the
+   * quote/hash was already consumed by another request.
    */
   async confirmPayment(
     quoteId: string,
     verification: PaymentVerification,
-  ): Promise<PaymentReceipt> {
+  ): Promise<PaymentReceipt | null> {
     const receipt: PaymentReceipt = {
       id: quoteId,
       quoteId,
@@ -68,22 +77,44 @@ export class PaymentsService {
       ledger: verification.ledger,
     };
 
-    await prisma.payment.updateMany({
-      where: { quoteId },
-      data: {
-        txHash: verification.txHash,
-        payerAddress: verification.payerAddress,
-        status: 'confirmed',
-        verifiedAt: new Date(verification.timestamp * 1000),
-        ledger: verification.ledger,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        receiptJson: receipt as any,
-      },
-    });
+    try {
+      const result = await prisma.payment.updateMany({
+        where: { quoteId, txHash: null },
+        data: {
+          txHash: verification.txHash,
+          payerAddress: verification.payerAddress,
+          status: 'confirmed',
+          verifiedAt: new Date(verification.timestamp * 1000),
+          ledger: verification.ledger,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          receiptJson: receipt as any,
+        },
+      });
 
-    logger.info('Payment confirmed', { quoteId, txHash: verification.txHash });
+      if (result.count === 0) {
+        // Already consumed (or the row never existed) — this caller lost the claim.
+        logger.warn('Payment claim lost (already consumed)', {
+          quoteId,
+          txHash: verification.txHash,
+        });
+        return null;
+      }
 
-    return receipt;
+      logger.info('Payment confirmed', { quoteId, txHash: verification.txHash });
+      return receipt;
+    } catch (error) {
+      // A unique-constraint violation on Payment.txHash means a concurrent
+      // request claimed this hash first — single-use holds.
+      const message = String(error instanceof Error ? error.message : error);
+      if (/unique|constraint|duplicate/i.test(message)) {
+        logger.warn('Payment claim lost (concurrent unique violation)', {
+          quoteId,
+          txHash: verification.txHash,
+        });
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -104,7 +135,9 @@ export class PaymentsService {
   }
 
   /**
-   * Find all payments, with pagination and filtering.
+   * Find all payments belonging to the authenticated wallet's providers,
+   * with pagination and filtering. Payments whose provider is not owned by
+   * the caller are never returned (cross-tenant isolation).
    */
   async findAll(
     options: {
@@ -114,6 +147,7 @@ export class PaymentsService {
       page?: number;
       limit?: number;
     } = {},
+    ownerAddress: string,
   ): Promise<{
     data: PaymentResponse[];
     total: number;
@@ -125,7 +159,13 @@ export class PaymentsService {
     const limit = options.limit || 20;
     const { providerId, status, payerAddress } = options;
 
-    const where: Record<string, unknown> = {};
+    // Only payments flowing to providers owned by the authenticated wallet.
+    // Note: unlike getStats (which 404s on foreign providers), a foreign
+    // providerId filter here silently returns an empty page — both are
+    // leak-free, the difference is deliberate.
+    const where: Record<string, unknown> = {
+      provider: { walletAddress: ownerAddress },
+    };
     if (providerId) where.providerId = providerId;
     if (status) where.status = status;
     if (payerAddress) where.payerAddress = payerAddress;
@@ -197,9 +237,16 @@ export class PaymentsService {
   }
 
   /**
-   * Get payment statistics for a provider.
+   * Get payment statistics for a provider owned by the authenticated wallet.
    */
-  async getStats(providerId: string) {
+  async getStats(providerId: string, ownerAddress: string) {
+    // Ownership check first — statistics about another wallet's provider are
+    // never exposed (and provider IDs can't be probed).
+    const provider = await prisma.provider.findFirst({
+      where: { id: providerId, walletAddress: ownerAddress },
+    });
+    if (!provider) throw new NotFoundException(`Provider ${providerId} not found`);
+
     const [confirmed, total, totalRevenue] = await Promise.all([
       prisma.payment.count({ where: { providerId, status: 'confirmed' } }),
       prisma.payment.count({ where: { providerId } }),

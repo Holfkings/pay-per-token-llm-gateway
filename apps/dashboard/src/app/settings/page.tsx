@@ -11,6 +11,8 @@ export default function SettingsPage() {
   const [name, setName] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
   const [payoutWalletAddress, setPayoutWalletAddress] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
   const [success, setSuccess] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -20,6 +22,7 @@ export default function SettingsPage() {
       setName(provider.name);
       setWalletAddress(provider.walletAddress);
       setPayoutWalletAddress(provider.payoutWalletAddress || '');
+      setWebhookUrl(provider.webhookUrl || '');
       setInitialized(true);
     }
   }, [provider, initialized]);
@@ -32,13 +35,15 @@ export default function SettingsPage() {
       {
         id: provider?.id,
         name,
-        walletAddress,
         payoutWalletAddress: payoutWalletAddress || undefined,
+        webhookUrl: webhookUrl || undefined,
+        webhookSecret: webhookSecret || undefined,
       },
       {
         onSuccess: () => {
           setSuccess(true);
           setTimeout(() => setSuccess(false), 3000);
+          setWebhookSecret('');
         },
       },
     );
@@ -131,13 +136,14 @@ export default function SettingsPage() {
             <input
               type="text"
               value={walletAddress}
-              onChange={(e) => setWalletAddress(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500/50"
-              placeholder="G..."
-              required
-              pattern="^G[A-Z2-7]{55}$"
-              title="Enter a valid Stellar wallet address starting with G"
+              disabled
+              className="w-full px-3 py-2 bg-gray-800/50 border border-border rounded-lg text-sm font-mono opacity-70 cursor-not-allowed"
+              title="Locked to your authenticated wallet"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Payments go to the wallet you signed in with. This address is locked and cannot be
+              changed — it is the ownership anchor for your providers.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">
@@ -151,6 +157,30 @@ export default function SettingsPage() {
               placeholder="G..."
               pattern="^(G[A-Z2-7]{55})?$"
               title="Enter a valid Stellar wallet address starting with G, or leave empty"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Webhook URL (optional)</label>
+            <input
+              type="url"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50"
+              placeholder="https://your-service.com/webhook"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Receive <code>payment_received</code> and <code>verification_failed</code> events.
+              Public HTTPS only.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Webhook Secret (optional)</label>
+            <input
+              type="password"
+              value={webhookSecret}
+              onChange={(e) => setWebhookSecret(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50"
+              placeholder="Used to sign webhooks (X-x402-Signature)"
             />
           </div>
           <button

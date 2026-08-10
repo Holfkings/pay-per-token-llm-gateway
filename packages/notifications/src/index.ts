@@ -160,6 +160,73 @@ export class WebhookNotificationHandler implements NotificationHandler {
     logger.error('Webhook delivery failed after all retries', { event: payload.event });
     return false;
   }
+
+  /**
+   * Send a webhook with an optional HMAC-SHA256 signature header so the
+   * receiver can verify the payload came from this gateway.
+   *
+   * Signature: hex(HMAC-SHA256(secret, rawBody)) sent as `X-x402-Signature`.
+   */
+  async sendWithSignature(
+    payload: NotificationPayload,
+    webhookUrl: string,
+    secret?: string,
+  ): Promise<boolean> {
+    const maxRetries = this.options.retryCount || 3;
+    const retryDelay = this.options.retryDelayMs || 1000;
+    const body = JSON.stringify({
+      event: payload.event,
+      providerId: payload.providerId,
+      data: payload.data,
+      timestamp: new Date().toISOString(),
+    });
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (secret) {
+      const { createHmac } = await import('crypto');
+      headers['X-x402-Signature'] = createHmac('sha256', secret).update(body).digest('hex');
+    }
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers,
+          body,
+          // Never let a misbehaving receiver stall payment processing.
+          signal: AbortSignal.timeout(10_000),
+        });
+
+        if (response.ok) {
+          logger.info('Signed webhook sent successfully', {
+            event: payload.event,
+            webhookUrl,
+            signed: !!secret,
+          });
+          return true;
+        }
+
+        logger.warn('Signed webhook delivery failed', {
+          event: payload.event,
+          status: response.status,
+          attempt,
+        });
+      } catch (error) {
+        logger.warn('Signed webhook error', {
+          event: payload.event,
+          error: String(error),
+          attempt,
+        });
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, retryDelay * attempt));
+      }
+    }
+
+    logger.error('Signed webhook delivery failed after all retries', { event: payload.event });
+    return false;
+  }
 }
 
 // ── Notification Dispatcher ──────────────────

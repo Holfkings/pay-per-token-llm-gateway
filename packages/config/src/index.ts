@@ -3,6 +3,23 @@
 // ──────────────────────────────────────────────
 
 import type { StellarNetwork, PaymentAsset } from '@x402/types';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
+import { config as loadDotEnv } from 'dotenv';
+
+// Load `.env` from the process working directory (the repo root for the
+// documented `pnpm dev:gateway` / `pnpm start:gateway` flow) so that
+// `cp .env.example .env` works out of the box. This must run before any
+// `process.env` reads below.
+//
+// - Never overrides variables that are already set in the environment
+//   (Docker, Railway, CI, shell exports all take precedence).
+// - Silent no-op when `.env` does not exist (e.g. CI, tests, containers
+//   that inject env vars directly).
+const envFilePath = resolve(process.cwd(), '.env');
+if (existsSync(envFilePath)) {
+  loadDotEnv({ path: envFilePath });
+}
 
 export interface ContractAddresses {
   /** Payment verifier contract ID */
@@ -18,6 +35,12 @@ export interface GatewayConfig {
   port: number;
   /** Server host */
   host: string;
+  /**
+   * Public base URL of the gateway (e.g. https://x402-gateway.example.com).
+   * Used in payment quotes/instructions so clients receive usable links even
+   * when the server binds 0.0.0.0. Falls back to host:port for local dev.
+   */
+  publicBaseUrl?: string;
   /** Node environment */
   nodeEnv: 'development' | 'production' | 'test';
 
@@ -100,8 +123,32 @@ export interface GatewayConfig {
     sessionDuration: number;
     /** CORS origins */
     corsOrigins: string[];
+    /**
+     * Explicit opt-in for the dev-only auth bypass (accepts `dev-sig-`
+     * signatures, authenticating as any wallet). Never implied by NODE_ENV —
+     * set AUTH_DEV_MODE=true in local development only.
+     */
+    authDevMode: boolean;
+    /**
+     * Express `trust proxy` setting, used to resolve the real client IP
+     * behind Cloudflare/NGINX/Railway for IP-based rate limiting.
+     * Examples: "1" (default, trust first hop), "loopback", or a
+     * comma-separated list of proxy IPs.
+     */
+    trustProxy: string;
   };
 }
+
+/**
+ * Well-known placeholder JWT secrets that must never be used in a running
+ * deployment. If the operator copied .env.example without generating a real
+ * secret, the gateway fails fast instead of running with a forgeable secret.
+ */
+const INSECURE_JWT_SECRETS = [
+  'change-me-to-a-random-64-byte-hex-string',
+  'change-me-in-production',
+  'dev-secret-change-in-production',
+];
 
 /**
  * Validate that required environment variables are set.
@@ -124,15 +171,15 @@ export function validateEnv(): void {
     },
   ];
 
-  // JWT_SECRET is required in production; in dev/test, a warning is sufficient
+  // JWT_SECRET is required in every non-test environment. Without it the
+  // gateway would fall back to a known default secret, letting anyone forge
+  // session tokens — fail fast instead. (Test suites set their own secret.)
   if (!process.env.JWT_SECRET) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(
-        'JWT_SECRET is required in production. Generate one with: openssl rand -base64 32',
-      );
-    }
-    console.warn(
-      '⚠  JWT_SECRET not set — using insecure dev default. Set JWT_SECRET before deploying to production.',
+    throw new Error('JWT_SECRET is required. Generate one with: openssl rand -base64 32');
+  }
+  if (INSECURE_JWT_SECRETS.includes(process.env.JWT_SECRET)) {
+    throw new Error(
+      'JWT_SECRET is set to a known insecure placeholder. Generate a real secret with: openssl rand -base64 32',
     );
   }
 
@@ -171,15 +218,26 @@ export function loadConfig(): GatewayConfig {
     },
   };
 
-  // Determine JWT secret — required in production, dev fallback only in non-prod
+  // JWT_SECRET is required in every non-test environment (fail fast so a
+  // misconfigured deploy can never silently run with a known default secret).
   const jwtSecret = process.env.JWT_SECRET;
-  if (!jwtSecret && nodeEnv === 'production') {
-    throw new Error('JWT_SECRET is required in production');
+  if (nodeEnv !== 'test') {
+    if (!jwtSecret) {
+      throw new Error(
+        'JWT_SECRET is required (set it to a random 256-bit value; generate with: openssl rand -base64 32)',
+      );
+    }
+    if (INSECURE_JWT_SECRETS.includes(jwtSecret)) {
+      throw new Error(
+        'JWT_SECRET is set to a known insecure placeholder. Generate a real secret with: openssl rand -base64 32',
+      );
+    }
   }
 
   return {
     port: parseInt(process.env.PORT || '3000', 10),
     host: process.env.HOST || '0.0.0.0',
+    publicBaseUrl: process.env.PUBLIC_GATEWAY_URL || undefined,
     nodeEnv,
 
     stellar: {
@@ -232,9 +290,12 @@ export function loadConfig(): GatewayConfig {
     },
 
     security: {
-      jwtSecret: jwtSecret || 'dev-secret-change-in-production',
+      // Test-only fallback; non-test environments throw above when unset.
+      jwtSecret: jwtSecret || 'test-secret-not-for-production',
       sessionDuration: parseInt(process.env.SESSION_DURATION || '86400', 10),
       corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3001').split(','),
+      authDevMode: process.env.AUTH_DEV_MODE === 'true',
+      trustProxy: process.env.TRUST_PROXY || '1',
     },
 
     contracts: {
@@ -245,8 +306,7 @@ export function loadConfig(): GatewayConfig {
         process.env.CREDIT_ESCROW_CONTRACT ||
         'CCE7AWVXPO57W5KDONOPMHDV4S5UBUBMHNJVSAVPL7AZGMD4WQN6WVAP',
       multisig:
-        process.env.MULTISIG_CONTRACT ||
-        'CDMBVMMNJVAJVAV3T2TAL2TAACGTKYUS45RXNLCYKYUC3VGHBI66NWAA',
+        process.env.MULTISIG_CONTRACT || 'CDMBVMMNJVAJVAV3T2TAL2TAACGTKYUS45RXNLCYKYUC3VGHBI66NWAA',
     },
   };
 }

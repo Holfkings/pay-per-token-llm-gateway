@@ -1,9 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProxyService } from './proxy.service';
+import { loadConfig, setConfig } from '@x402/config';
 import type { Response } from 'express';
 
 describe('ProxyService', () => {
   let service: ProxyService;
+
+  // Snapshot the env-based config once so tests that override it (retries,
+  // stream timeout) can always restore it afterwards regardless of test order.
+  const baseConfig = loadConfig();
+
+  afterEach(() => {
+    setConfig(baseConfig);
+    jest.useRealTimers();
+  });
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -223,6 +233,256 @@ describe('ProxyService', () => {
         );
 
         expect(doneTokens).toBe(42);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+  });
+
+  describe('forwardRequest', () => {
+    const upstreamUrl = 'https://api.example.com/v1/chat/completions';
+    const request = {
+      model: 'gpt-4',
+      messages: [{ role: 'user' as const, content: 'Hello' }],
+    };
+    const responseBody = {
+      id: 'cmpl-1',
+      object: 'chat.completion',
+      created: 1700000000,
+      model: 'gpt-4',
+      choices: [
+        {
+          index: 0,
+          message: { role: 'assistant', content: 'Hello' },
+          finish_reason: 'stop',
+        },
+      ],
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+    };
+
+    beforeEach(() => {
+      // Fail fast without retry backoff sleeps so failure-path tests run quickly
+      setConfig({ ...baseConfig, llm: { ...baseConfig.llm, maxRetries: 1 } });
+    });
+
+    function mockOkFetch() {
+      return jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => responseBody,
+      }) as unknown as typeof fetch;
+    }
+
+    it('forwards a request with auth and trace headers and returns the response', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = mockOkFetch();
+
+      try {
+        const { response, responseTime } = await service.forwardRequest(
+          request,
+          upstreamUrl,
+          'sk-test-key',
+          'trace-123',
+        );
+
+        expect(global.fetch).toHaveBeenCalledWith(
+          upstreamUrl,
+          expect.objectContaining({
+            method: 'POST',
+            headers: expect.objectContaining({
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer sk-test-key',
+              'X-Request-Trace-Id': 'trace-123',
+            }),
+            body: JSON.stringify(request),
+          }),
+        );
+        expect(response).toEqual(responseBody);
+        expect(responseTime).toBeGreaterThanOrEqual(0);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('omits optional auth and trace headers when not provided', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = mockOkFetch();
+
+      try {
+        await service.forwardRequest(request, upstreamUrl);
+
+        const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+        expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('throws an upstream error when the status is not ok', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: async () => 'Bad Gateway',
+      }) as unknown as typeof fetch;
+
+      try {
+        await expect(service.forwardRequest(request, upstreamUrl)).rejects.toThrow(
+          'Upstream error: 502 Bad Gateway',
+        );
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('throws when the upstream fetch rejects', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = jest
+        .fn()
+        .mockRejectedValue(new Error('ECONNREFUSED')) as unknown as typeof fetch;
+
+      try {
+        await expect(service.forwardRequest(request, upstreamUrl)).rejects.toThrow('ECONNREFUSED');
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    describe('circuit breaker', () => {
+      // Note: the 5-failure threshold and 30s cooldown mirror the
+      // CircuitBreaker class defaults in proxy.service.ts — update these
+      // tests if the defaults change.
+      it('opens after 5 consecutive failures and fast-fails subsequent requests', async () => {
+        const originalFetch = global.fetch;
+        global.fetch = jest.fn().mockRejectedValue(new Error('boom')) as unknown as typeof fetch;
+
+        try {
+          for (let i = 0; i < 5; i++) {
+            await expect(service.forwardRequest(request, upstreamUrl)).rejects.toThrow('boom');
+          }
+
+          // Circuit is open — even a healthy upstream is rejected immediately
+          global.fetch = mockOkFetch();
+          await expect(service.forwardRequest(request, upstreamUrl)).rejects.toThrow(
+            'Circuit breaker open',
+          );
+        } finally {
+          global.fetch = originalFetch;
+        }
+      });
+
+      it('allows a half-open test call after the cooldown and resets on success', async () => {
+        jest.useFakeTimers();
+        const originalFetch = global.fetch;
+
+        try {
+          global.fetch = jest.fn().mockRejectedValue(new Error('boom')) as unknown as typeof fetch;
+          for (let i = 0; i < 5; i++) {
+            await expect(service.forwardRequest(request, upstreamUrl)).rejects.toThrow('boom');
+          }
+
+          // After the cooldown the circuit is half-open: one test call is allowed
+          jest.advanceTimersByTime(30_000);
+
+          global.fetch = mockOkFetch();
+          const { response } = await service.forwardRequest(request, upstreamUrl);
+          expect(response).toEqual(responseBody);
+
+          // Success closed the circuit — the next call is not blocked
+          const second = await service.forwardRequest(request, upstreamUrl);
+          expect(second.response).toEqual(responseBody);
+        } finally {
+          global.fetch = originalFetch;
+        }
+      });
+    });
+  });
+
+  describe('forwardStreamRequest error handling', () => {
+    const upstreamUrl = 'https://api.example.com/v1/chat/completions';
+    const request = {
+      model: 'gpt-4',
+      messages: [{ role: 'user' as const, content: 'Hi' }],
+      stream: true,
+    };
+
+    function makeMockRes() {
+      return {
+        setHeader: jest.fn(),
+        flushHeaders: jest.fn(),
+        write: jest.fn(),
+        end: jest.fn(),
+        on: jest.fn(),
+        removeListener: jest.fn(),
+        get writableEnded() {
+          return false;
+        },
+      } as unknown as Response;
+    }
+
+    it('records a failure and writes an error chunk when the upstream stream errors', async () => {
+      const mockRes = makeMockRes();
+      const readableStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"choices":[]}\n\n'));
+          controller.error(new Error('stream reset'));
+        },
+      });
+
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: readableStream,
+      });
+
+      try {
+        await service.forwardStreamRequest(request, upstreamUrl, mockRes);
+
+        expect(mockRes.write).toHaveBeenCalledWith(expect.stringContaining('Stream interrupted'));
+        expect(mockRes.end).toHaveBeenCalled();
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('closes the stream when the safety timeout is reached', async () => {
+      jest.useFakeTimers();
+      setConfig({ ...loadConfig(), llm: { ...loadConfig().llm, streamTimeout: 100 } });
+
+      const onDone = jest.fn();
+      const mockRes = makeMockRes();
+      const readableStream = new ReadableStream({
+        start() {
+          /* upstream hangs — never emits data */
+        },
+      });
+
+      const originalFetch = global.fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: readableStream,
+      });
+
+      try {
+        const pending = service.forwardStreamRequest(
+          request,
+          upstreamUrl,
+          mockRes,
+          undefined,
+          undefined,
+          onDone,
+        );
+
+        await jest.advanceTimersByTimeAsync(100);
+        await pending;
+
+        expect(mockRes.end).toHaveBeenCalled();
+        expect(onDone).toHaveBeenCalled();
+        expect(mockRes.write).not.toHaveBeenCalledWith(
+          expect.stringContaining('Stream interrupted'),
+        );
       } finally {
         global.fetch = originalFetch;
       }

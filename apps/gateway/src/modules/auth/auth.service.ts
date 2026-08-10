@@ -46,8 +46,11 @@ export class AuthService {
   }> {
     const config = getConfig();
 
-    // Dev mode: accept dev-sig- prefixed signatures for testing
-    const isDevSignature = config.nodeEnv === 'development' && signature.startsWith('dev-sig-');
+    // Dev-only auth bypass: accept `dev-sig-` prefixed signatures, which
+    // authenticate as any wallet. Gated behind an explicit AUTH_DEV_MODE=true
+    // flag — it is never implied by NODE_ENV, so a production deploy can't
+    // accidentally enable it.
+    const isDevSignature = config.security.authDevMode && this.isDevSignature(signature);
 
     const result = isDevSignature
       ? { verified: true as const }
@@ -72,7 +75,10 @@ export class AuthService {
       exp: Math.floor(session.expiresAt / 1000),
     };
 
-    const token = jwt.sign(payload, config.security.jwtSecret);
+    const token = jwt.sign(payload, config.security.jwtSecret, {
+      algorithm: 'HS256',
+      issuer: 'x402-gateway',
+    });
 
     logger.info('Auth verified, session created', {
       sessionId: session.sessionId,
@@ -80,6 +86,20 @@ export class AuthService {
     });
 
     return { verified: true, token };
+  }
+
+  /**
+   * True when the signature is a dev-mode signature. The dashboard dev
+   * fallback base64-encodes `dev-sig-<address>-<timestamp>`, so check both
+   * the raw prefix and the decoded form.
+   */
+  private isDevSignature(signature: string): boolean {
+    if (signature.startsWith('dev-sig-')) return true;
+    try {
+      return Buffer.from(signature, 'base64').toString('utf-8').startsWith('dev-sig-');
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -94,7 +114,9 @@ export class AuthService {
     const config = getConfig();
 
     try {
-      const payload = jwt.verify(token, config.security.jwtSecret) as AuthTokenPayload;
+      const payload = jwt.verify(token, config.security.jwtSecret, {
+        issuer: 'x402-gateway',
+      }) as AuthTokenPayload;
 
       // Validate the session in the store (Redis or in-memory)
       const session = await this.authStore.validateSession(payload.sessionId);

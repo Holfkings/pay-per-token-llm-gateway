@@ -9,10 +9,13 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ProvidersService } from './providers.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentWallet } from '../auth/current-wallet.decorator';
+import { providerCreateSchema, providerUpdateSchema } from '@x402/validation';
 
 @ApiTags('providers')
 @Controller('providers')
@@ -21,38 +24,54 @@ export class ProvidersController {
   constructor(private readonly providersService: ProvidersService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all providers' })
-  async findAll() {
-    return this.providersService.findAll();
+  @ApiOperation({ summary: 'List providers owned by the authenticated wallet' })
+  async findAll(@CurrentWallet() wallet: string) {
+    return this.providersService.findAll(wallet);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get provider by ID' })
-  async findById(@Param('id') id: string) {
-    return this.providersService.findById(id);
+  @ApiOperation({ summary: 'Get provider by ID (must be owned by the caller)' })
+  async findById(@Param('id') id: string, @CurrentWallet() wallet: string) {
+    return this.providersService.findById(id, wallet);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Register a new provider' })
+  @ApiOperation({ summary: 'Register a new provider (owned by the authenticated wallet)' })
   async create(
-    @Body() body: { name: string; walletAddress: string; payoutWalletAddress?: string },
+    @Body()
+    body: {
+      name: string;
+      payoutWalletAddress?: string;
+      webhookUrl?: string;
+      webhookSecret?: string;
+    },
+    @CurrentWallet() wallet: string,
   ) {
-    return this.providersService.create(body);
+    const parsed = providerCreateSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    return this.providersService.create(parsed.data, wallet);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update provider' })
+  @ApiOperation({ summary: 'Update provider (must be owned by the caller)' })
   async update(
     @Param('id') id: string,
-    @Body() body: { name?: string; walletAddress?: string; active?: boolean },
+    @Body() body: { name?: string; active?: boolean; webhookUrl?: string; webhookSecret?: string },
+    @CurrentWallet() wallet: string,
   ) {
-    return this.providersService.update(id, body);
+    const parsed = providerUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    return this.providersService.update(id, parsed.data, wallet);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete provider' })
-  async delete(@Param('id') id: string) {
-    await this.providersService.delete(id);
+  @ApiOperation({ summary: 'Delete provider (must be owned by the caller)' })
+  async delete(@Param('id') id: string, @CurrentWallet() wallet: string) {
+    await this.providersService.delete(id, wallet);
   }
 }

@@ -1,0 +1,68 @@
+name: Deploy Dashboard to Vercel
+
+on:
+  push:
+    branches: [main]
+    # Monorepo: only redeploy when dashboard-relevant files change.
+    # Remove the `paths` filter to deploy on every push to main.
+    paths:
+      - 'apps/dashboard/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig.base.json'
+      - '.github/workflows/deploy-vercel.yml'
+  workflow_dispatch:
+
+# If a new commit lands on main while a deploy is running, cancel the stale
+# deploy — only the latest main should go to production.
+concurrency:
+  group: vercel-dashboard-production
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: '9'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy dashboard to Vercel (production)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
+
+      # The build runs on Vercel's infrastructure using the build command in
+      # apps/dashboard/vercel.json (pnpm install + nx build dashboard), so no
+      # local install is needed here.
+      #
+      # One-time Vercel project setup:
+      #   1. Import the repo and set the project Root Directory to `apps/dashboard`.
+      #   2. Add secrets to this repo:
+      #        VERCEL_TOKEN       → vercel.com/account/tokens
+      #        VERCEL_ORG_ID      → Vercel project → Settings → General → Team ID
+      #        VERCEL_PROJECT_ID  → Vercel project → Settings → General → Project ID
+      #   3. Set NEXT_PUBLIC_GATEWAY_URL in the Vercel project env (or replace the
+      #      placeholder in apps/dashboard/vercel.json) so the /api/gateway/*
+      #      rewrites point at the real Railway gateway URL.
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v42
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./apps/dashboard
+          vercel-args: --prod

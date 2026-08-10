@@ -1,7 +1,9 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentWallet } from '../auth/current-wallet.decorator';
+import { paginationSchema } from '@x402/validation';
 
 @ApiTags('payments')
 @Controller('payments')
@@ -10,20 +12,34 @@ export class PaymentsController {
 
   @Get()
   @UseGuards(AuthGuard)
-  @ApiOperation({ summary: 'List all payments' })
+  @ApiOperation({ summary: "List payments to the authenticated wallet's providers" })
   @ApiQuery({ name: 'providerId', required: false })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'payerAddress', required: false })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'limit', required: false })
   async findAll(
+    @CurrentWallet() wallet: string,
     @Query('providerId') providerId?: string,
     @Query('status') status?: string,
     @Query('payerAddress') payerAddress?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.paymentsService.findAll({ providerId, status, payerAddress, page, limit });
+    // Validate/clamp pagination — raw query strings (e.g. page=abc, limit=-1)
+    // previously reached Prisma as NaN/negative skip/take and 500'd.
+    const parsed = paginationSchema.safeParse({
+      page: page === '' || page === undefined ? undefined : page,
+      limit: limit === '' || limit === undefined ? undefined : limit,
+    });
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    const { page: safePage, limit: safeLimit } = parsed.data;
+    return this.paymentsService.findAll(
+      { providerId, status, payerAddress, page: safePage, limit: safeLimit },
+      wallet,
+    );
   }
 
   @Get(':quoteId/status')
@@ -37,7 +53,6 @@ export class PaymentsController {
       quoteId: payment.quoteId,
       status: payment.status,
       txHash: payment.txHash || null,
-      payerAddress: payment.payerAddress || null,
       amount: typeof payment.amount === 'bigint' ? payment.amount.toString() : payment.amount,
       asset: payment.asset,
       verifiedAt: payment.verifiedAt,

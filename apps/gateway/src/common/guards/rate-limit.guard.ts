@@ -10,28 +10,36 @@ import {
 import type { Request } from 'express';
 import { getConfig } from '@x402/config';
 import type { Redis } from 'ioredis';
+import type { PrismaClient } from '@x402/database';
 
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   private readonly logger = new Logger(RateLimitGuard.name);
 
-  constructor(@Inject('REDIS') private readonly redis: Redis) {}
+  constructor(
+    @Inject('REDIS') private readonly redis: Redis,
+    @Inject('PRISMA') private readonly prisma: PrismaClient,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const config = getConfig();
 
-    // Identify the caller: prefer x-caller-address header, fall back to IP
-    const callerId =
-      (request.headers['x-caller-address'] as string) ||
-      request.ip ||
-      request.socket.remoteAddress ||
-      'unknown';
+    // Identify the caller by IP only. Client-supplied headers (e.g.
+    // x-caller-address) are never trusted — an attacker could rotate them to
+    // bypass the limit entirely. Behind a reverse proxy, `request.ip` is
+    // resolved via the Express `trust proxy` setting configured in main.ts.
+    const callerId = request.ip || request.socket.remoteAddress || 'unknown';
 
     const txHash = request.headers['x-payment-hash'] as string | undefined;
 
-    if (txHash) {
-      // Paid requests get a higher, separate rate limit
+    // The paid tier is only granted when the payment hash has actually been
+    // CONFIRMED — the mere presence of a (possibly fake) header must never
+    // raise the limit, or the paid tier is trivially spoofable.
+    const isConfirmed = await this.isConfirmedPayment(txHash);
+
+    if (isConfirmed) {
+      // Confirmed payments get a higher, separate rate limit
       const paidWindow = config.redis.rateLimitWindow * 2; // e.g. 120s
       const paidMax = config.redis.rateLimitMax * 10; // e.g. 100 requests/window
       return this.checkLimit(callerId, paidWindow, paidMax, 'paid');
@@ -41,6 +49,23 @@ export class RateLimitGuard implements CanActivate {
     const unpaidWindow = config.redis.rateLimitWindow;
     const unpaidMax = config.redis.rateLimitMax;
     return this.checkLimit(callerId, unpaidWindow, unpaidMax, 'unpaid');
+  }
+
+  /** True when the header carries a txHash with a confirmed payment row. */
+  private async isConfirmedPayment(txHash: string | undefined): Promise<boolean> {
+    if (!txHash || !/^[a-f0-9]{64}$/i.test(txHash)) return false;
+    try {
+      const payment = await this.prisma.payment.findFirst({
+        where: { txHash, status: 'confirmed' },
+        select: { id: true },
+      });
+      return !!payment;
+    } catch (error) {
+      this.logger.warn('Rate limit payment check failed, using unpaid tier', {
+        error: String(error),
+      });
+      return false;
+    }
   }
 
   private async checkLimit(

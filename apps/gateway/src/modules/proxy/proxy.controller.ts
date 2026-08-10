@@ -18,7 +18,7 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { AdminService } from '../admin/admin.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
-import { chatCompletionRequestSchema } from '@x402/validation';
+import { chatCompletionRequestSchema, txHashSchema } from '@x402/validation';
 import { calculatePrice, comparePayment } from '@x402/x402-core';
 import { logger } from '@x402/logger';
 import { generateId } from '@x402/shared';
@@ -69,9 +69,10 @@ export class ProxyController {
       const body = parseResult.data;
       const model = body.model;
 
-      // 2. Look up route — strip global prefix from req.path for matching
-      const routePath = req.path.replace(/^\/api\/v1/, '') || req.path;
-      const route = await this.routesService.findByPathAndModel(routePath, model);
+      // 2. Look up the route for the requested model. Path normalization
+      // (stripping the gateway prefix and matching `/v1` conventions) is
+      // handled inside RoutesService so the matching logic stays in one place.
+      const route = await this.routesService.findByPathAndModel(req.path, model);
       if (!route) {
         return res.status(404).json({
           status: 404,
@@ -80,8 +81,20 @@ export class ProxyController {
         });
       }
 
-      // 3. Check for payment header
+      // 3. Check for payment header. When present it must be a well-formed
+      // 64-char hex transaction hash — reject garbage (and multi-value header
+      // arrays) before it reaches Redis keys or Horizon URL paths.
       const txHash = req.headers['x-payment-hash'] as string | undefined;
+      if (txHash !== undefined) {
+        const txParse = txHashSchema.safeParse(txHash);
+        if (!txParse.success) {
+          return res.status(400).json({
+            status: 400,
+            error: 'Bad Request',
+            message: 'Invalid X-Payment-Hash header: expected a 64-character hexadecimal string',
+          });
+        }
+      }
       if (!txHash) {
         return this.handle402Response(res, route, traceId, model, body);
       }
@@ -168,6 +181,7 @@ export class ProxyController {
       action: 'quote_generated',
       entity: 'quote',
       entityId: quote.id,
+      providerId: route.providerId,
       actor: 'system',
       details: {
         model,
@@ -195,6 +209,15 @@ export class ProxyController {
 
     const existingPayment = await this.paymentsService.findByTxHash(txHash);
 
+    // SECURITY — single-use invariant. A confirmed payment row means this
+    // txHash has already been consumed; it must never grant access a second
+    // time. Previously a confirmed row on the SAME route short-circuited to
+    // `true`, letting callers pay once and replay the hash indefinitely for
+    // unlimited LLM access (and bypassing Redis/on-chain replay protection,
+    // which were only consulted for not-yet-confirmed payments). Cross-route
+    // replays are rejected first for a clearer message; same-route replays
+    // are rejected here — the DB row is evidence of consumption, never proof
+    // of freshness.
     if (existingPayment?.status === 'confirmed') {
       if (existingPayment.routeId !== route.id) {
         logger.warn('Cross-route replay attempt', {
@@ -211,11 +234,17 @@ export class ProxyController {
         return false;
       }
 
-      logger.info('Payment already confirmed for this route', {
+      logger.warn('Payment replay attempt (hash already used)', {
         traceId,
         txHash,
+        routeId: existingPayment.routeId,
       });
-      return true;
+      res.status(402).json({
+        status: 402,
+        error: 'Payment Required',
+        message: 'This payment has already been used. A new payment is required.',
+      });
+      return false;
     }
 
     // Use the original quote from the pending payment, or generate a new one.
@@ -258,6 +287,7 @@ export class ProxyController {
         action: 'payment_verification_failed',
         entity: 'payment',
         entityId: txHash,
+        providerId: route.providerId,
         actor: verification.payerAddress,
         details: {
           reason: verification.failureReason,
@@ -284,17 +314,34 @@ export class ProxyController {
       return false;
     }
 
-    if (existingPayment) {
-      await this.paymentsService.confirmPayment(existingPayment.quoteId, verification);
-    } else {
-      await this.paymentsService.createPendingPayment(quoteForVerification, route);
-      await this.paymentsService.confirmPayment(quoteForVerification.id, verification);
+    // Atomically claim the payment. `confirmPayment` returns null when a
+    // concurrent request already consumed this hash (single-use invariant)
+    // — in that case the caller must NOT receive LLM access.
+    const claimResult = existingPayment
+      ? await this.paymentsService.confirmPayment(existingPayment.quoteId, verification)
+      : await (async () => {
+          await this.paymentsService.createPendingPayment(quoteForVerification, route);
+          return this.paymentsService.confirmPayment(quoteForVerification.id, verification);
+        })();
+
+    if (!claimResult) {
+      logger.warn('Payment replay attempt (claim lost to concurrent request)', {
+        traceId,
+        txHash,
+      });
+      res.status(402).json({
+        status: 402,
+        error: 'Payment Required',
+        message: 'This payment has already been used. A new payment is required.',
+      });
+      return false;
     }
 
     await this.adminService.writeAuditLog({
       action: 'payment_verified',
       entity: 'payment',
       entityId: txHash,
+      providerId: route.providerId,
       actor: verification.payerAddress,
       details: {
         amount: verification.amount,
@@ -376,6 +423,7 @@ export class ProxyController {
       action: 'request_forwarded_stream',
       entity: 'request',
       entityId: traceId,
+      providerId: route.providerId,
       actor: payment?.payerAddress || 'unknown',
       details: { model: body.model, route: route.path, txHash, traceId },
     });
@@ -445,6 +493,7 @@ export class ProxyController {
       action: 'request_forwarded',
       entity: 'request',
       entityId: traceId,
+      providerId: route.providerId,
       actor: payment?.payerAddress || 'unknown',
       details: {
         model: body.model,

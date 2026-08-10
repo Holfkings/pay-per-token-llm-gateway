@@ -6,11 +6,12 @@ pnpm exec nx run-many --target=lint --all || { echo "❌ Lint failed — push ab
 
 echo ""
 echo "── Unit Tests ──"
-pnpm exec nx run-many --target=test --all || { echo "❌ Tests failed — push aborted"; exit 1; }
+# --coverage so jest coverageThreshold is enforced before push
+pnpm exec nx run-many --target=test --all --coverage || { echo "❌ Tests failed — push aborted"; exit 1; }
 
 echo ""
 echo "── E2E Tests ──"
-pnpm nx run gateway:test:e2e || { echo "❌ E2E tests failed — push aborted"; exit 1; }
+pnpm nx run gateway:test:e2e --coverage || { echo "❌ E2E tests failed — push aborted"; exit 1; }
 
 echo ""
 echo "✅ All tests passed — pushing..."

@@ -79,20 +79,80 @@ export const providerSchema = z.object({
   name: z.string().min(1).max(100),
   walletAddress: stellarAddressSchema,
   payoutWalletAddress: stellarAddressSchema.optional(),
+  // Empty string is allowed so clients can clear a configured webhook
+  // (the service treats "" as "no webhook"). Non-empty values are further
+  // SSRF-validated (HTTPS + public IP) by the gateway before persisting.
+  webhookUrl: z.union([z.string().url(), z.literal('')]).optional(),
+  webhookSecret: z.string().min(16).optional(),
   metadata: z.record(z.string()).optional(),
 });
 
-export const routeConfigSchema = z.object({
+/** Create-provider payload (ownership always comes from the auth wallet). */
+export const providerCreateSchema = providerSchema.omit({ walletAddress: true });
+
+/** Update-provider payload — every field optional. */
+export const providerUpdateSchema = providerSchema
+  .omit({ walletAddress: true, metadata: true })
+  .partial();
+
+/**
+ * Cross-field refinement: each pricing model requires its own price field.
+ * Without this, a `flat` route with no `flatPrice` quotes amount 0 (free
+ * access) and a `per_token` route with no `perTokenPrice` computes to 0.
+ */
+function enforcePricingPrice(
+  data: { pricingModel?: 'flat' | 'per_token'; flatPrice?: string; perTokenPrice?: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.pricingModel === 'flat' && data.flatPrice === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['flatPrice'],
+      message: 'flatPrice is required when pricingModel is "flat"',
+    });
+  }
+  if (data.pricingModel === 'per_token' && data.perTokenPrice === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['perTokenPrice'],
+      message: 'perTokenPrice is required when pricingModel is "per_token"',
+    });
+  }
+}
+
+/** Base route fields (shared by create/update schemas). */
+const routeConfigBase = z.object({
   providerId: z.string().uuid(),
   path: z.string().min(1).startsWith('/'),
   upstreamUrl: z.string().url(),
   model: z.string().min(1),
   pricingModel: pricingModelSchema,
-  flatPrice: z.string().optional(),
-  perTokenPrice: z.string().optional(),
+  // Prices must be non-negative integer stroop amounts — a malformed string
+  // (e.g. "abc") would crash BigInt() during quote generation.
+  flatPrice: z.string().regex(/^\d+$/, 'flatPrice must be a non-negative integer').optional(),
+  perTokenPrice: z
+    .string()
+    .regex(/^\d+$/, 'perTokenPrice must be a non-negative integer')
+    .optional(),
   acceptedAssets: z.array(paymentAssetSchema).min(1),
   rateLimit: z.number().int().positive().default(10),
 });
+
+/** Create-route payload — prices must be numeric and match the pricing model. */
+export const routeConfigSchema = routeConfigBase.superRefine(enforcePricingPrice);
+
+/** Update-route payload — every field optional, prices must be non-negative integers. */
+export const routeUpdateSchema = routeConfigBase
+  .omit({ providerId: true, path: true, model: true, acceptedAssets: true })
+  .partial()
+  .extend({
+    flatPrice: z.string().regex(/^\d+$/, 'flatPrice must be a non-negative integer').optional(),
+    perTokenPrice: z
+      .string()
+      .regex(/^\d+$/, 'perTokenPrice must be a non-negative integer')
+      .optional(),
+  })
+  .superRefine(enforcePricingPrice);
 
 // ── Payment ──────────────────────────────────
 

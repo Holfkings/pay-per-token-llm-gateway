@@ -10,10 +10,13 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { RoutesService } from './routes.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentWallet } from '../auth/current-wallet.decorator';
+import { routeConfigSchema, routeUpdateSchema } from '@x402/validation';
 import type { PaymentAsset } from '@x402/types';
 
 @ApiTags('routes')
@@ -23,20 +26,20 @@ export class RoutesController {
   constructor(private readonly routesService: RoutesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all routes' })
+  @ApiOperation({ summary: 'List routes owned by the authenticated wallet' })
   @ApiQuery({ name: 'providerId', required: false })
-  async findAll(@Query('providerId') providerId?: string) {
-    return this.routesService.findAll(providerId);
+  async findAll(@CurrentWallet() wallet: string, @Query('providerId') providerId?: string) {
+    return this.routesService.findAll(wallet, providerId);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get route by ID' })
-  async findById(@Param('id') id: string) {
-    return this.routesService.findById(id);
+  @ApiOperation({ summary: 'Get route by ID (must belong to the caller)' })
+  async findById(@Param('id') id: string, @CurrentWallet() wallet: string) {
+    return this.routesService.findById(id, wallet);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new protected route' })
+  @ApiOperation({ summary: 'Create a new protected route (provider must be owned by the caller)' })
   async create(
     @Body()
     body: {
@@ -50,12 +53,17 @@ export class RoutesController {
       acceptedAssets?: PaymentAsset[];
       rateLimit?: number;
     },
+    @CurrentWallet() wallet: string,
   ) {
-    return this.routesService.create(body);
+    const parsed = routeConfigSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    return this.routesService.create(parsed.data, wallet);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update a route' })
+  @ApiOperation({ summary: 'Update a route (must belong to the caller)' })
   async update(
     @Param('id') id: string,
     @Body()
@@ -67,14 +75,19 @@ export class RoutesController {
       rateLimit?: number;
       active?: boolean;
     },
+    @CurrentWallet() wallet: string,
   ) {
-    return this.routesService.update(id, body);
+    const parsed = routeUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    return this.routesService.update(id, parsed.data, wallet);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a route' })
-  async delete(@Param('id') id: string) {
-    await this.routesService.delete(id);
+  @ApiOperation({ summary: 'Delete a route (must belong to the caller)' })
+  async delete(@Param('id') id: string, @CurrentWallet() wallet: string) {
+    await this.routesService.delete(id, wallet);
   }
 }

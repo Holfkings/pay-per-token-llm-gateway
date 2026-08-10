@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import type { ChatCompletionRequest, ChatCompletionResponse } from '@x402/types';
 import { getConfig } from '@x402/config';
 import { logger } from '@x402/logger';
-import { retry } from '@x402/shared';
+import { retry, NonRetryableError } from '@x402/shared';
 
 // ── Circuit Breaker ──────────────────────────
 
@@ -114,6 +114,11 @@ export class ProxyService {
 
           if (!res.ok) {
             const errorBody = await res.text();
+            // 4xx errors are client/config errors — retrying them wastes
+            // upstream quota and adds latency. Only 5xx/network/timeouts retry.
+            if (res.status >= 400 && res.status < 500) {
+              throw new NonRetryableError(`Upstream error: ${res.status} ${errorBody}`);
+            }
             throw new Error(`Upstream error: ${res.status} ${errorBody}`);
           }
 

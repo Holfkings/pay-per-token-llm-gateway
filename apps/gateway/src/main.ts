@@ -1,20 +1,29 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { json } from 'express';
+import { Express, json } from 'express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { getConfig, validateEnv } from '@x402/config';
-import { logger } from '@x402/logger';
+import { logger, enableJsonLogs } from '@x402/logger';
 
 async function bootstrap() {
   // Fail fast if required environment variables are missing
   validateEnv();
 
+  // Structured JSON logs in production for log aggregators
+  if (process.env.NODE_ENV === 'production') {
+    enableJsonLogs();
+  }
+
   const config = getConfig();
   const app = await NestFactory.create(AppModule, {
     bodyParser: false, // we set it explicitly below with a size limit
   });
+
+  // Security headers (CSP, X-Frame-Options, HSTS, nosniff, etc.)
+  app.use(helmet());
 
   // Body size limit: 1 MB is enough for any reasonable chat completion request
   app.use(json({ limit: '1mb' }));
@@ -27,6 +36,14 @@ async function bootstrap() {
     origin: config.security.corsOrigins,
     credentials: true,
   });
+
+  // Trust the first proxy hop (Cloudflare/NGINX/Railway) so `request.ip`
+  // reflects the real client IP — required for IP-based rate limiting.
+  // Configure via TRUST_PROXY (e.g. "1", "loopback", or a comma-separated
+  // list of proxy IPs). See https://expressjs.com/en/guide/behind-proxies.html
+  const trustProxy = config.security.trustProxy;
+  const httpServer = app.getHttpAdapter().getInstance() as Express;
+  httpServer.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 
   // Global exception filter (consistent error format + Retry-After for 429)
   app.useGlobalFilters(new HttpExceptionFilter());
@@ -60,11 +77,15 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
+  // Graceful shutdown: close HTTP server + DB/Redis connections on SIGTERM/SIGINT
+  app.enableShutdownHooks();
+
   await app.listen(config.port, config.host);
-  logger.info(`🚀 x402 Gateway running on http://${config.host}:${config.port}`, {
+  const publicBase = config.publicBaseUrl || `http://${config.host}:${config.port}`;
+  logger.info(`🚀 x402 Gateway running on ${publicBase}`, {
     network: config.stellar.network,
-    docs: `http://${config.host}:${config.port}/api/docs`,
-    health: `http://${config.host}:${config.port}/health`,
+    docs: `${publicBase}/api/docs`,
+    health: `${publicBase}/health`,
   });
 }
 

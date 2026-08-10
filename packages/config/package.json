@@ -6,6 +6,7 @@
   "types": "./src/index.ts",
   "scripts": {},
   "dependencies": {
-    "@x402/types": "workspace:*"
+    "@x402/types": "workspace:*",
+    "dotenv": "^16.4.5"
   }
 }

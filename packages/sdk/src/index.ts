@@ -15,7 +15,7 @@ import {
   PaymentAsset,
   StellarNetwork,
 } from '@x402/types';
-import { sleep } from '@x402/shared';
+import { sleep, stroopsToUnits } from '@x402/shared';
 import { logger } from '@x402/logger';
 import { buildPaymentTransaction, createHorizonServer } from '@x402/wallet';
 
@@ -231,7 +231,9 @@ export class X402Client {
       const result = await buildPaymentTransaction({
         sourceSecret: this.config.secretKey,
         destination: quote.paymentAddress,
-        amount: quote.amount,
+        // Quote amounts are in stroops; the stellar-sdk expects decimal
+        // asset units (e.g. "0.1" USDC), so convert before building the tx.
+        amount: stroopsToUnits(quote.amount),
         asset: quote.asset,
         assetIssuer: quote.assetIssuer,
         memo: quote.memo,

@@ -24,6 +24,17 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Error that must never be retried (e.g. upstream 4xx client errors).
+ * Throwing this inside a `retry` callback aborts the retry loop immediately.
+ */
+export class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetryableError';
+  }
+}
+
 /** Retry a function with exponential backoff */
 export async function retry<T>(
   fn: () => Promise<T>,
@@ -40,6 +51,8 @@ export async function retry<T>(
     try {
       return await fn();
     } catch (error) {
+      // Client/configuration errors will never succeed on retry — abort immediately.
+      if (error instanceof NonRetryableError) throw error;
       if (attempt === maxAttempts) throw error;
       const delay = Math.min(baseDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
       const jitter = delay * (0.5 + Math.random() * 0.5);
@@ -72,11 +85,41 @@ export function formatAmount(amount: string, decimals: number): string {
   return fractionStr ? `${whole}.${fractionStr}` : whole.toString();
 }
 
-/** Parse a human-readable amount to smallest unit string */
+/**
+ * Parse a human-readable amount to smallest unit string.
+ *
+ * NOTE: inputs with more than `decimals` fractional digits are interpreted
+ * as-is rather than truncated/rounded (Horizon never returns more than 7
+ * decimals for Stellar assets, so this only matters for misuse).
+ */
 export function parseAmount(amount: string, decimals: number): string {
   const [whole, fraction = ''] = amount.split('.');
   const padded = fraction.padEnd(decimals, '0');
   return (BigInt(whole) * BigInt(10 ** decimals) + BigInt(padded)).toString();
+}
+
+/**
+ * All Stellar assets use 7-decimal precision: 1 stroop = 1e-7 asset units.
+ * Horizon reports payment amounts as decimal strings in asset units
+ * (e.g. "0.1000000"), while x402 quotes use stroops (e.g. "1000000").
+ */
+export const STELLAR_DECIMALS = 7;
+
+/**
+ * Convert a Horizon decimal amount in asset units (e.g. "0.1000000")
+ * to stroops (e.g. "1000000"). Used when verifying on-chain payments
+ * against x402 quote amounts.
+ */
+export function unitsToStroops(amount: string, decimals: number = STELLAR_DECIMALS): string {
+  return parseAmount(amount, decimals);
+}
+
+/**
+ * Convert an amount in stroops (e.g. "1000000") to decimal asset units
+ * (e.g. "0.1") as expected by the stellar-sdk `Operation.payment`.
+ */
+export function stroopsToUnits(amount: string, decimals: number = STELLAR_DECIMALS): string {
+  return formatAmount(amount, decimals);
 }
 
 /** Safe JSON parse with default value */

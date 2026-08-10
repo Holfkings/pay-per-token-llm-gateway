@@ -63,6 +63,23 @@ const routeRegistry: Record<string, any> = {
     createdAt: new Date(),
     updatedAt: new Date(),
   },
+  // Configured WITHOUT the /v1 prefix — must still resolve from
+  // /api/v1/chat/completions (route matching supports both conventions).
+  'gpt-4-bare': {
+    id: 'e2e-route-004',
+    providerId: 'e2e-provider-001',
+    path: '/chat/completions',
+    upstreamUrl: 'https://api.mock-llm.example.com/v1/chat/completions',
+    model: 'gpt-4-bare',
+    pricingModel: 'flat',
+    flatPrice: '1000000',
+    perTokenPrice: null,
+    acceptedAssets: ['USDC'],
+    rateLimit: 10,
+    active: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
 };
 
 jest.mock('@x402/database', () => ({
@@ -90,12 +107,20 @@ jest.mock('@x402/database', () => ({
       count: jest.fn().mockResolvedValue(1),
     },
     route: {
+      // Path-aware mock: the route's configured `path` must be one of the
+      // candidates the service generated from the incoming request path.
+      // This exercises the real normalization logic (regression: C2) instead
+      // of matching by model only.
       findFirst: jest.fn().mockImplementation(({ where }: any) => {
         const entry = routeRegistry[where?.model];
-        if (entry && where?.active === true) {
-          return Promise.resolve({ ...entry });
+        if (!entry || where?.active !== true) {
+          return Promise.resolve(null);
         }
-        return Promise.resolve(null);
+        const candidates: string[] = where?.path?.in ?? (where?.path != null ? [where.path] : []);
+        if (candidates.length > 0 && !candidates.includes(entry.path)) {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve({ ...entry });
       }),
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn(),
@@ -125,10 +150,20 @@ jest.mock('@x402/database', () => ({
       findMany: jest.fn().mockImplementation(() => Promise.resolve(mockPaymentStore)),
       count: jest.fn().mockResolvedValue(0),
       updateMany: jest.fn().mockImplementation(({ where, data }: any) => {
-        mockPaymentStore = mockPaymentStore.map((p) =>
-          p.quoteId === where.quoteId ? { ...p, ...data } : p,
-        );
-        return Promise.resolve({ count: 1 });
+        // Mirrors the real single-use claim: only un-consumed rows (txHash
+        // IS NULL) may be updated, and the caller learns whether it won via
+        // the affected-row count.
+        let updated = 0;
+        mockPaymentStore = mockPaymentStore.map((p) => {
+          const matches =
+            p.quoteId === where.quoteId && (where.txHash === null || where.txHash === undefined);
+          if (matches) {
+            updated++;
+            return { ...p, ...data };
+          }
+          return p;
+        });
+        return Promise.resolve({ count: updated });
       }),
       aggregate: jest.fn().mockResolvedValue({ _sum: { amount: null } }),
     },
@@ -215,9 +250,14 @@ function createHorizonAndLLMFetch() {
     }
     if (u.includes('/operations')) {
       const txId = u.split('/transactions/')[1]?.split('/')[0];
-      let amount = '1000000';
+      // Horizon reports amounts as decimal strings in asset units
+      // (e.g. '0.1000000' = 0.1 USDC = 1000000 stroops).
+      let amount = '0.1000000';
       let to = PW;
-      if (txId === TX4) { amount = '500000'; to = PW2; }
+      if (txId === TX4) {
+        amount = '0.2100000';
+        to = PW2;
+      } // 2,100,000 stroops ≥ 2,048,000 deposit (500 × 4096)
       return {
         ok: true,
         status: 200,
@@ -325,6 +365,34 @@ describe('x402 Gateway E2E — Core Flow', () => {
       .expect(404);
   });
 
+  it('resolves routes configured with the /v1 prefix from /api/v1 requests (regression: C2)', async () => {
+    // The gpt-4 route is stored with path '/v1/chat/completions'. The
+    // incoming request path is '/api/v1/chat/completions', which the gateway
+    // prefix turns into '/chat/completions'. The route matcher must still
+    // resolve the /v1-configured route — previously every request 404'd here.
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/chat/completions')
+      .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'Route match' }] })
+      .expect(402);
+
+    expect(res.body.status).toBe(402);
+    expect(res.body.quote).toBeDefined();
+    expect(res.body.quote.amount).toBe('1000000');
+  });
+
+  it('resolves routes configured without the /v1 prefix from /api/v1 requests', async () => {
+    // gpt-4-bare is stored with path '/chat/completions' (no /v1). It must
+    // also resolve from the gateway-prefixed request path.
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/chat/completions')
+      .send({ model: 'gpt-4-bare', messages: [{ role: 'user', content: 'Bare route' }] })
+      .expect(402);
+
+    expect(res.body.status).toBe(402);
+    expect(res.body.quote).toBeDefined();
+    expect(res.body.quote.amount).toBe('1000000');
+  });
+
   it('returns 400 for invalid body', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/chat/completions')
@@ -422,7 +490,7 @@ describe('x402 Gateway E2E — Core Flow', () => {
     expect(v.body.payerAddress).toBe(PAYER);
   });
 
-  it('accepts confirmed payment replay idempotently', async () => {
+  it('rejects reuse of a payment hash already used on the same route (single-use)', async () => {
     const replayHash = 'f' + 'a'.repeat(63);
 
     await request(app.getHttpServer())
@@ -430,19 +498,23 @@ describe('x402 Gateway E2E — Core Flow', () => {
       .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'First' }] })
       .expect(402);
 
+    // First use: the caller pays and receives the LLM response.
     await request(app.getHttpServer())
       .post('/api/v1/chat/completions')
       .set('X-Payment-Hash', replayHash)
       .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'First' }] })
       .expect(200);
 
+    // Second use with the SAME hash on the SAME route must be rejected —
+    // a confirmed payment grants access exactly once (regression: C1).
     const res = await request(app.getHttpServer())
       .post('/api/v1/chat/completions')
       .set('X-Payment-Hash', replayHash)
       .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'Second' }] })
-      .expect(200);
+      .expect(402);
 
-    expect(res.body.id).toBe('chatcmpl-e2e-test');
+    expect(res.body.status).toBe(402);
+    expect(res.body.message).toMatch(/already been used/i);
   });
 
   it('returns SSE stream for streaming requests', async () => {
@@ -474,7 +546,7 @@ describe('x402 Gateway E2E — Core Flow', () => {
                   type: 'payment',
                   from: PAYER,
                   to: PW,
-                  amount: '1000000',
+                  amount: '0.1000000',
                   asset_code: 'USDC',
                   asset_issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
                   asset_type: 'credit_alphanum4',
@@ -624,8 +696,8 @@ describe('x402 Gateway E2E — Per-Token Metered Pricing', () => {
   });
 
   it('returns surplus header when user overpays for per-token route', async () => {
-    // TX4 pays 500000 stroops but 500 tokens × 50 = 25000 stroops
-    // Surplus = 500000 - 25000 = 475000 stroops
+    // TX4 pays 2,100,000 stroops but 500 tokens × 50 = 25,000 stroops
+    // Surplus = 2,100,000 - 25,000 = 2,075,000 stroops
     await request(app.getHttpServer())
       .post('/api/v1/chat/completions')
       .send({ model: 'gpt-4-per-token', messages: [{ role: 'user', content: 'Overpay' }] })
@@ -637,22 +709,52 @@ describe('x402 Gateway E2E — Per-Token Metered Pricing', () => {
       const u = String(url);
       if (u.includes('/transactions/') && !u.includes('/operations')) {
         return {
-          ok: true, status: 200,
-          json: async () => ({ id: overpayHash, successful: true, source_account: PAYER, ledger: 12345, created_at: new Date().toISOString() }),
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: overpayHash,
+            successful: true,
+            source_account: PAYER,
+            ledger: 12345,
+            created_at: new Date().toISOString(),
+          }),
         };
       }
       if (u.includes('/operations')) {
         return {
-          ok: true, status: 200,
+          ok: true,
+          status: 200,
           json: async () => ({
-            _embedded: { records: [{ type: 'payment', from: PAYER, to: PW2, amount: '500000', asset_code: 'USDC', asset_issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5', asset_type: 'credit_alphanum4' }] },
+            // 2,100,000 stroops = 0.21 USDC (≥ 2,048,000 stroop deposit)
+            _embedded: {
+              records: [
+                {
+                  type: 'payment',
+                  from: PAYER,
+                  to: PW2,
+                  amount: '0.2100000',
+                  asset_code: 'USDC',
+                  asset_issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+                  asset_type: 'credit_alphanum4',
+                },
+              ],
+            },
           }),
         };
       }
       if (u.includes('mock-llm')) {
         return {
-          ok: true, status: 200,
-          json: async () => ({ id: 'chatcmpl-overpay', object: 'chat.completion', model: 'gpt-4-per-token', choices: [{ index: 0, message: { role: 'assistant', content: 'Short' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 15, total_tokens: 25 } }),
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: 'chatcmpl-overpay',
+            object: 'chat.completion',
+            model: 'gpt-4-per-token',
+            choices: [
+              { index: 0, message: { role: 'assistant', content: 'Short' }, finish_reason: 'stop' },
+            ],
+            usage: { prompt_tokens: 10, completion_tokens: 15, total_tokens: 25 },
+          }),
         };
       }
       return { ok: false, status: 404, json: async () => ({}) };
@@ -743,7 +845,7 @@ describe('x402 Gateway E2E — Cross-Route Replay Protection', () => {
     expect(res.body.message).toMatch(/different route/i);
   });
 
-  it('allows same payment on same route (replay idempotency)', async () => {
+  it('rejects same payment on same route after first use (single-use)', async () => {
     const hash = '1' + 'd'.repeat(63);
 
     await request(app.getHttpServer())
@@ -757,13 +859,14 @@ describe('x402 Gateway E2E — Cross-Route Replay Protection', () => {
       .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'First' }] })
       .expect(200);
 
+    // Same-route replay after a confirmed payment must be rejected (single-use).
     const res = await request(app.getHttpServer())
       .post('/api/v1/chat/completions')
       .set('X-Payment-Hash', hash)
       .send({ model: 'gpt-4', messages: [{ role: 'user', content: 'Second' }] })
-      .expect(200);
+      .expect(402);
 
-    expect(res.body.id).toBe('chatcmpl-e2e-test');
+    expect(res.body.message).toMatch(/already been used/i);
   });
 });
 
@@ -1104,4 +1207,55 @@ describe('x402 Gateway E2E — Payment Receipts', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// Admin Endpoint Security Tests
+// ═══════════════════════════════════════════════════════════════════
 
+describe('x402 Gateway E2E — Admin Endpoint Security', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    global.fetch = createHorizonAndLLMFetch() as any;
+    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider('REDIS')
+      .useValue({
+        eval: jest.fn().mockResolvedValue(1),
+        exists: jest.fn().mockResolvedValue(0),
+        set: jest.fn().mockResolvedValue('OK'),
+        on: jest.fn(),
+        connect: jest.fn(),
+        ping: jest.fn().mockResolvedValue('PONG'),
+      })
+      .overrideProvider('PRISMA')
+      .useValue(mockPrisma)
+      .compile();
+    app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalFilters(new HttpExceptionFilter());
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => {
+    resetMockStore();
+    jest.clearAllMocks();
+  });
+
+  it('requires authentication for admin stats', async () => {
+    await request(app.getHttpServer()).get('/api/v1/admin/stats').expect(401);
+  });
+
+  it('requires authentication for admin health', async () => {
+    await request(app.getHttpServer()).get('/api/v1/admin/health').expect(401);
+  });
+
+  it('requires authentication for admin audit logs', async () => {
+    await request(app.getHttpServer()).get('/api/v1/admin/audit').expect(401);
+  });
+});

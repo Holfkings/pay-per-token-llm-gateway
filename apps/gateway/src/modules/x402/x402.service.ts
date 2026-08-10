@@ -9,7 +9,7 @@ import {
 } from '@x402/x402-core';
 import { getConfig } from '@x402/config';
 import { logger } from '@x402/logger';
-import { isPaymentUsedOnChain } from './contract-client';
+import { isPaymentUsedOnChain, recordPaymentOnChain } from './contract-client';
 import type { Quote, PaymentVerification, PaymentReceipt, RouteConfig } from '@x402/types';
 import type { PrismaClient } from '@x402/database';
 
@@ -39,7 +39,9 @@ export class X402Service {
     const quote = generateQuote({
       route,
       providerAddress,
-      gatewayBaseUrl: `http://${config.host}:${config.port}`,
+      // In production the server binds 0.0.0.0 — quote URLs must point at a
+      // public base URL (PUBLIC_GATEWAY_URL) or clients receive broken links.
+      gatewayBaseUrl: config.publicBaseUrl || `http://${config.host}:${config.port}`,
       network: config.stellar.network,
       quoteExpirySeconds: config.payment.quoteExpirySeconds,
       usdcIssuer: config.payment.usdcIssuer,
@@ -58,7 +60,7 @@ export class X402Service {
     const config = getConfig();
     return buildPaymentRequiredResponse({
       quote,
-      gatewayBaseUrl: `http://${config.host}:${config.port}`,
+      gatewayBaseUrl: config.publicBaseUrl || `http://${config.host}:${config.port}`,
     });
   }
 
@@ -72,8 +74,10 @@ export class X402Service {
   async verifyPayment(txHash: string, quote: Quote): Promise<PaymentVerification> {
     const config = getConfig();
 
-    // Layer 1: Redis-backed replay protection (fast, local)
-    if (await this.replayProtection.isUsed(txHash)) {
+    // Layer 1: Redis-backed atomic replay protection (fast, local). `claim`
+    // uses SET NX so concurrent requests with the same hash race here and
+    // exactly one wins — the foundation of single-use enforcement.
+    if (!(await this.replayProtection.claim(txHash, config.redis.paymentCacheTtl))) {
       return {
         verified: false,
         txHash,
@@ -94,7 +98,7 @@ export class X402Service {
       config.stellar.sorobanRpcUrl,
     );
     if (contractUsed) {
-      // Mark in Redis too so we don't query the contract again
+      // Extend the Redis claim so we don't query the contract again
       await this.replayProtection.markUsed(txHash, config.redis.paymentCacheTtl);
       return {
         verified: false,
@@ -115,11 +119,27 @@ export class X402Service {
       horizonUrl: config.stellar.horizonUrl,
       sorobanRpcUrl: config.stellar.sorobanRpcUrl,
       networkPassphrase: config.stellar.networkPassphrase,
-      usedPayments: new Set(),
     });
 
     if (verification.verified) {
-      await this.replayProtection.markUsed(txHash, config.redis.paymentCacheTtl);
+      // Best-effort on-chain audit trail: record the verified payment on the
+      // payment-verifier contract so replay protection and the immutable
+      // audit trail survive Redis loss and work across gateway instances.
+      if (config.payment.contractAdminSecret) {
+        await recordPaymentOnChain({
+          contractId: config.contracts.paymentVerifier,
+          rpcUrl: config.stellar.sorobanRpcUrl,
+          networkPassphrase: config.stellar.networkPassphrase,
+          adminSecret: config.payment.contractAdminSecret,
+          txHash,
+          payer: verification.payerAddress,
+          payee: quote.paymentAddress,
+          amount: verification.amount,
+          asset: verification.asset,
+          timestamp: verification.timestamp,
+          quoteId: quote.id,
+        });
+      }
     }
 
     return verification;

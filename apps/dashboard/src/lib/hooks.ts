@@ -145,20 +145,25 @@ export function useSaveProvider() {
     mutationFn: async (data: {
       id?: string;
       name: string;
-      walletAddress: string;
       payoutWalletAddress?: string;
+      webhookUrl?: string;
+      webhookSecret?: string;
     }) => {
       if (data.id) {
         return updateProvider(data.id, {
           name: data.name,
-          walletAddress: data.walletAddress,
-          ...(data.payoutWalletAddress && { payoutWalletAddress: data.payoutWalletAddress }),
+          ...(data.payoutWalletAddress !== undefined && {
+            payoutWalletAddress: data.payoutWalletAddress,
+          }),
+          ...(data.webhookUrl !== undefined && { webhookUrl: data.webhookUrl }),
+          ...(data.webhookSecret !== undefined && { webhookSecret: data.webhookSecret }),
         });
       }
       return createProvider({
         name: data.name,
-        walletAddress: data.walletAddress,
         ...(data.payoutWalletAddress && { payoutWalletAddress: data.payoutWalletAddress }),
+        ...(data.webhookUrl && { webhookUrl: data.webhookUrl }),
+        ...(data.webhookSecret && { webhookSecret: data.webhookSecret }),
       });
     },
     onSuccess: () => {

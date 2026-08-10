@@ -9,13 +9,16 @@ import {
   HttpStatus,
   UnauthorizedException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { stellarAddressSchema } from '@x402/validation';
+import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 
 @ApiTags('auth')
 @Controller('auth')
+@UseGuards(RateLimitGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 

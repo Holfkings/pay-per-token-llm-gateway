@@ -286,6 +286,7 @@ export interface ProviderResponse {
   name: string;
   walletAddress: string;
   payoutWalletAddress?: string;
+  webhookUrl?: string;
   active: boolean;
   metadata?: Record<string, string>;
   createdAt: string;
@@ -298,8 +299,9 @@ export function fetchProviders(): Promise<ProviderResponse[]> {
 
 export function createProvider(data: {
   name: string;
-  walletAddress: string;
   payoutWalletAddress?: string;
+  webhookUrl?: string;
+  webhookSecret?: string;
 }): Promise<ProviderResponse> {
   return request<ProviderResponse>('/providers', {
     method: 'POST',
@@ -309,7 +311,7 @@ export function createProvider(data: {
 
 export function updateProvider(
   id: string,
-  data: Partial<ProviderResponse>,
+  data: Partial<ProviderResponse> & { webhookSecret?: string },
 ): Promise<ProviderResponse> {
   return request<ProviderResponse>(`/providers/${id}`, {
     method: 'PUT',

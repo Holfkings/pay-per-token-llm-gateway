@@ -47,13 +47,13 @@ This enables **permissionless AI access** — anyone with a Stellar wallet can u
 
 ### Why Stellar?
 
-| Feature | Benefit |
-|---------|---------|
-| **$0.00001 fees** | Economical for micropayments as small as $0.001 |
-| **5-second finality** | Near-instant payment confirmation |
-| **USDC native** | Stablecoin support without bridges or wrapped tokens |
-| **Soroban smart contracts** | On-chain verification, escrow, and multisig payouts |
-| **Horizon API** | Simple REST API for querying transactions |
+| Feature                     | Benefit                                              |
+| --------------------------- | ---------------------------------------------------- |
+| **$0.00001 fees**           | Economical for micropayments as small as $0.001      |
+| **5-second finality**       | Near-instant payment confirmation                    |
+| **USDC native**             | Stablecoin support without bridges or wrapped tokens |
+| **Soroban smart contracts** | On-chain verification, escrow, and multisig payouts  |
+| **Horizon API**             | Simple REST API for querying transactions            |
 
 ---
 
@@ -111,6 +111,7 @@ Caller                Gateway                 Stellar              Upstream LLM
 ## ✨ Features
 
 ### Core Gateway
+
 - **HTTP 402 Payment Required** — Standards-compliant payment flow
 - **OpenAI-compatible API** — Drop-in replacement for `/v1/chat/completions`
 - **Streaming (SSE) support** — Real-time token streaming to clients
@@ -121,14 +122,15 @@ Caller                Gateway                 Stellar              Upstream LLM
 
 ### 💰 Pricing Models
 
-| Model | How It Works | Use Case |
-|-------|-------------|----------|
-| **Flat-rate** | Fixed price per request | Standard API access, known costs |
+| Model         | How It Works                                  | Use Case                                |
+| ------------- | --------------------------------------------- | --------------------------------------- |
+| **Flat-rate** | Fixed price per request                       | Standard API access, known costs        |
 | **Per-token** | Pay per token consumed (`usage.total_tokens`) | Variable-length responses, fair billing |
 
 For per-token pricing, the client sends a deposit (estimated from `max_tokens`), the gateway calculates actual cost from the response's `usage.total_tokens`, and the surplus/underpayment is reported via response headers.
 
 ### 📊 Dashboard (Next.js)
+
 - Real-time revenue and request analytics
 - Route and provider CRUD management
 - Payment history with filtering and pagination
@@ -137,6 +139,7 @@ For per-token pricing, the client sends a deposit (estimated from `max_tokens`),
 - Webhook configuration and testing
 
 ### 🔗 Client SDK
+
 - TypeScript/JavaScript SDK with automatic 402 → pay → retry flow
 - Streaming support via async generators
 - Stellar wallet integration (secret key or external signer)
@@ -144,6 +147,7 @@ For per-token pricing, the client sends a deposit (estimated from `max_tokens`),
 - Lightweight — depends only on `stellar-sdk` and `fetch`
 
 ### 📡 Notifications
+
 - Webhook delivery with retry logic
 - Event types: `payment_received`, `verification_failed`, `request_forwarded`
 - Extensible notification channel system
@@ -211,18 +215,18 @@ x402-llm-gateway/
 
 ### Database Schema
 
-| Model | Purpose |
-|-------|---------|
-| `Provider` | LLM provider/merchant with Stellar wallet |
-| `Route` | Protected endpoint → upstream mapping with pricing |
-| `Payment` | Payment records with on-chain verification data |
-| `Wallet` | Stellar wallet addresses |
-| `PrepaidCredit` | Escrow balances for credit-based billing (v2) |
-| `ApiKey` | Provider API keys for dashboard access |
-| `Session` | Auth sessions with JWT tokens |
-| `Notification` | Delivered notification records |
-| `AnalyticsEvent` | Request and payment events for analytics |
-| `AuditLog` | Immutable audit trail of all operations |
+| Model            | Purpose                                            |
+| ---------------- | -------------------------------------------------- |
+| `Provider`       | LLM provider/merchant with Stellar wallet          |
+| `Route`          | Protected endpoint → upstream mapping with pricing |
+| `Payment`        | Payment records with on-chain verification data    |
+| `Wallet`         | Stellar wallet addresses                           |
+| `PrepaidCredit`  | Escrow balances for credit-based billing (v2)      |
+| `ApiKey`         | Provider API keys for dashboard access             |
+| `Session`        | Auth sessions with JWT tokens                      |
+| `Notification`   | Delivered notification records                     |
+| `AnalyticsEvent` | Request and payment events for analytics           |
+| `AuditLog`       | Immutable audit trail of all operations            |
 
 ---
 
@@ -244,8 +248,16 @@ cd pay-per-token-llm-gateway
 
 pnpm install
 pnpm nx run database:generate
+
+# 1. Copy the example environment file
 cp .env.example .env
+
+# 2. Generate a real JWT_SECRET and paste it into .env
+openssl rand -base64 32
+# ⚠️  The gateway refuses to start with a missing or placeholder JWT_SECRET.
 ```
+
+The gateway **auto-loads `.env` from the repository root on startup** — no manual `export` is required. See [Environment Files](#environment-files).
 
 ### 2. Start Infrastructure
 
@@ -287,6 +299,13 @@ curl -X POST http://localhost:3000/api/v1/chat/completions \
   }'
 ```
 
+### Environment Files
+
+- The gateway loads a `.env` file from the repository root on startup (via `@x402/config`). This is what makes `cp .env.example .env` work — no manual `export` is needed for `pnpm dev:gateway`, `pnpm exec nx start gateway`, or the Docker image (as long as the file is present).
+- **Precedence:** variables already present in the environment (Docker, Railway, CI, or your shell) always win and are **never** overridden by `.env`.
+- **Missing file:** when `.env` does not exist, loading is a silent no-op — the gateway simply uses whatever is already in the environment (e.g. containers that inject variables directly).
+- `.env` is gitignored; only `.env.example` templates should be committed.
+
 ---
 
 ## 📡 API Reference
@@ -297,21 +316,21 @@ curl -X POST http://localhost:3000/api/v1/chat/completions \
 POST /api/v1/chat/completions
 ```
 
-| Header | Required | Description |
-|--------|----------|-------------|
-| `Content-Type` | Yes | `application/json` |
-| `X-Payment-Hash` | No | Stellar transaction hash (required after paying) |
+| Header           | Required | Description                                      |
+| ---------------- | -------- | ------------------------------------------------ |
+| `Content-Type`   | Yes      | `application/json`                               |
+| `X-Payment-Hash` | No       | Stellar transaction hash (required after paying) |
 
 **Request body:** OpenAI-compatible chat completion request.
 
 **Responses:**
 
-| Status | Condition |
-|--------|-----------|
-| `200` | Payment verified, LLM response returned |
-| `402` | Payment required — quote and instructions in body |
-| `404` | No route configured for the requested model |
-| `502` | Upstream LLM request failed |
+| Status | Condition                                         |
+| ------ | ------------------------------------------------- |
+| `200`  | Payment verified, LLM response returned           |
+| `402`  | Payment required — quote and instructions in body |
+| `404`  | No route configured for the requested model       |
+| `502`  | Upstream LLM request failed                       |
 
 ### 402 Response Body
 
@@ -321,7 +340,7 @@ POST /api/v1/chat/completions
   "message": "Payment Required",
   "quote": {
     "id": "uuid",
-    "route": "/api/v1/chat/completions",
+    "route": "/v1/chat/completions",
     "pricingModel": "flat",
     "amount": "1000000",
     "asset": "USDC",
@@ -360,8 +379,10 @@ GET    /api/v1/payments/:quoteId/status
 GET    /api/v1/analytics/summary
 GET    /api/v1/analytics/timeseries
 
-# Admin
-GET    /api/v1/admin/audit
+# Admin (all require a wallet session Bearer token)
+GET    /api/v1/admin/stats
+GET    /api/v1/admin/health
+GET    /api/v1/admin/audit   # scoped to the authenticated wallet's providers
 
 # Webhooks
 POST   /api/v1/webhooks/test
@@ -382,7 +403,7 @@ import { X402Client } from '@x402/sdk';
 
 const client = new X402Client({
   gatewayUrl: 'https://my-gateway.example.com',
-  secretKey: 'S...',        // Your Stellar secret key for auto-pay
+  secretKey: 'S...', // Your Stellar secret key for auto-pay
   network: 'testnet',
   defaultAsset: 'USDC',
 });
@@ -428,19 +449,25 @@ All of this is transparent to the caller — you write normal LLM API code and t
 Three Soroban (Rust) smart contracts provide on-chain guarantees:
 
 ### Payment Verifier
+
 Records verified payments on-chain with immutable audit trail. Provides:
+
 - `record_payment` — Admin-only payment recording with replay protection
 - `is_payment_used` — Deduplication check by transaction hash
 - `get_payment` / `get_payments` — Paginated payment queries
 
 ### Credit Escrow
+
 Holds prepaid credit balances for account-based billing (v2):
+
 - `deposit` / `withdraw` — Token deposit and withdrawal
 - `charge` — Admin-only balance deduction for usage
 - `balance` / `get_usage` — Balance checks and usage history
 
 ### Multisig Wallet
+
 Requires M-of-N signer approval for provider payouts:
+
 - `propose` — Create a payout proposal
 - `approve` — Signer approval; executes transfer when threshold is met
 - `get_proposal` / `get_config` — Proposal and configuration queries
@@ -496,23 +523,25 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for the complete step-by-step guide.
 
 ## 🔧 Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_ENV` | `development` | Environment (`production`, `test`, `development`) |
-| `PORT` | `3000` | Gateway server port |
-| `HOST` | `0.0.0.0` | Gateway server host |
-| `DATABASE_URL` | — | PostgreSQL connection string |
-| `REDIS_URL` | — | Redis connection string |
-| `STELLAR_NETWORK` | `testnet` | Stellar network (`testnet`, `mainnet`, `futurenet`) |
-| `HORIZON_URL` | `https://horizon-testnet.stellar.org` | Horizon API endpoint |
-| `SOROBAN_RPC_URL` | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint |
-| `NETWORK_PASSPHRASE` | `Test SDF Network ; September 2015` | Stellar network passphrase |
-| `USDC_ISSUER` | `GBBD47...` | USDC token issuer on Stellar |
-| `JWT_SECRET` | — | Secret key for JWT session tokens |
-| `QUOTE_EXPIRY_SECONDS` | `300` | Time before quotes expire (5 min) |
-| `LLM_REQUEST_TIMEOUT` | `120000` | Upstream LLM timeout in ms |
-| `CORS_ORIGINS` | `http://localhost:3001` | Allowed CORS origins (comma-separated) |
-| `UPSTREAM_API_KEY_<PROVIDER>` | — | Upstream LLM API key per provider |
+| Variable                      | Default                               | Description                                                                                                                     |
+| ----------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                    | `development`                         | Environment (`production`, `test`, `development`)                                                                               |
+| `PORT`                        | `3000`                                | Gateway server port                                                                                                             |
+| `HOST`                        | `0.0.0.0`                             | Gateway server host                                                                                                             |
+| `DATABASE_URL`                | —                                     | PostgreSQL connection string                                                                                                    |
+| `REDIS_URL`                   | —                                     | Redis connection string                                                                                                         |
+| `STELLAR_NETWORK`             | `testnet`                             | Stellar network (`testnet`, `mainnet`, `futurenet`)                                                                             |
+| `HORIZON_URL`                 | `https://horizon-testnet.stellar.org` | Horizon API endpoint                                                                                                            |
+| `SOROBAN_RPC_URL`             | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint                                                                                                            |
+| `NETWORK_PASSPHRASE`          | `Test SDF Network ; September 2015`   | Stellar network passphrase                                                                                                      |
+| `USDC_ISSUER`                 | `GBBD47...`                           | USDC token issuer on Stellar                                                                                                    |
+| `JWT_SECRET`                  | — (required)                          | Secret key for JWT session tokens — the gateway fails fast if missing or set to a known placeholder (`openssl rand -base64 32`) |
+| `AUTH_DEV_MODE`               | `false`                               | Accept `dev-sig-` signatures as any wallet — for local development only, never in production                                    |
+| `TRUST_PROXY`                 | `1`                                   | Express `trust proxy` hops so IP-based rate limiting sees real client IPs behind Cloudflare/NGINX/Railway                       |
+| `QUOTE_EXPIRY_SECONDS`        | `300`                                 | Time before quotes expire (5 min)                                                                                               |
+| `LLM_REQUEST_TIMEOUT`         | `120000`                              | Upstream LLM timeout in ms                                                                                                      |
+| `CORS_ORIGINS`                | `http://localhost:3001`               | Allowed CORS origins (comma-separated)                                                                                          |
+| `UPSTREAM_API_KEY_<PROVIDER>` | —                                     | Upstream LLM API key per provider                                                                                               |
 
 ---
 

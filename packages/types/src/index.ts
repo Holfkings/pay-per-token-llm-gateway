@@ -138,6 +138,14 @@ export interface Provider {
   walletAddress: StellarAddress;
   /** Optional payout wallet (multisig) */
   payoutWalletAddress?: StellarAddress;
+  /** Webhook endpoint for payment notifications */
+  webhookUrl?: string;
+  /**
+   * Webhook signing secret (write-only). Used to compute the
+   * `X-x402-Signature` HMAC on outgoing webhooks. Never included in API
+   * responses — `toProviderResponse` deliberately omits it.
+   */
+  webhookSecret?: string;
   /** Whether the provider is active */
   active: boolean;
   /** Provider metadata */

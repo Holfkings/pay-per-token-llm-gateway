@@ -1,10 +1,23 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@x402/database';
 import type { AnalyticsEvent } from '@x402/analytics';
 import type { AnalyticsSummary, TimeSeriesDataPoint } from '@x402/types';
 
 @Injectable()
 export class AnalyticsService {
+  /**
+   * Resolve the provider IDs owned by the authenticated wallet. All analytics
+   * reads are scoped to this set — a wallet can never see another wallet's
+   * events.
+   */
+  private async getOwnedProviderIds(ownerAddress: string): Promise<string[]> {
+    const providers = await prisma.provider.findMany({
+      where: { walletAddress: ownerAddress },
+      select: { id: true },
+    });
+    return providers.map((p) => p.id);
+  }
+
   /** Record an unpaid (402) request event. */
   async recordUnpaidRequest(route: string, providerId: string) {
     await prisma.analyticsEvent.create({
@@ -85,10 +98,19 @@ export class AnalyticsService {
   }
 
   /**
-   * Get analytics summary using Prisma aggregation queries.
+   * Get analytics summary using Prisma aggregation queries, scoped to the
+   * authenticated wallet's providers.
    */
-  async getSummary(providerId?: string): Promise<AnalyticsSummary> {
-    const where = providerId ? { providerId } : {};
+  async getSummary(ownerAddress: string, providerId?: string): Promise<AnalyticsSummary> {
+    const providerIds = await this.getOwnedProviderIds(ownerAddress);
+    // Ownership gate first — never construct a query for a resource the
+    // caller cannot touch (404 instead of 403 so provider IDs can't be probed).
+    if (providerId && !providerIds.includes(providerId)) {
+      throw new NotFoundException(`Provider ${providerId} not found`);
+    }
+    const where: Record<string, unknown> = providerId
+      ? { providerId }
+      : { providerId: { in: providerIds } };
 
     const [totalCount, paidCount, unpaidCount, revenueResult, avgResponseResult] =
       await Promise.all([
@@ -170,13 +192,20 @@ export class AnalyticsService {
   }
 
   /**
-   * Get time-series data using Prisma queries with time bucketing.
+   * Get time-series data using Prisma queries with time bucketing, scoped to
+   * the authenticated wallet's providers.
    */
   async getTimeSeries(
     providerId: string,
+    ownerAddress: string,
     intervalMinutes = 60,
     durationHours = 24,
   ): Promise<TimeSeriesDataPoint[]> {
+    const providerIds = await this.getOwnedProviderIds(ownerAddress);
+    if (!providerIds.includes(providerId)) {
+      throw new NotFoundException(`Provider ${providerId} not found`);
+    }
+
     const now = new Date();
     const startTime = new Date(now.getTime() - durationHours * 60 * 60 * 1000);
 
@@ -239,19 +268,29 @@ export class AnalyticsService {
   }
 
   /**
-   * Get raw events for audit/debugging.
+   * Get raw events for audit/debugging, scoped to the authenticated wallet's
+   * providers.
    */
-  async getEvents(filter?: {
-    providerId?: string;
-    type?: string;
-    limit?: number;
-    offset?: number;
-  }): Promise<AnalyticsEvent[]> {
+  async getEvents(
+    ownerAddress: string,
+    filter?: {
+      providerId?: string;
+      type?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<AnalyticsEvent[]> {
+    const providerIds = await this.getOwnedProviderIds(ownerAddress);
+    const where: Record<string, unknown> = filter?.providerId
+      ? { providerId: filter.providerId }
+      : { providerId: { in: providerIds } };
+    if (filter?.providerId && !providerIds.includes(filter.providerId)) {
+      throw new NotFoundException(`Provider ${filter.providerId} not found`);
+    }
+    if (filter?.type) where.type = filter.type;
+
     const rows = await prisma.analyticsEvent.findMany({
-      where: {
-        ...(filter?.providerId ? { providerId: filter.providerId } : {}),
-        ...(filter?.type ? { type: filter.type } : {}),
-      },
+      where,
       orderBy: { createdAt: 'desc' },
       skip: filter?.offset || 0,
       take: filter?.limit || 100,

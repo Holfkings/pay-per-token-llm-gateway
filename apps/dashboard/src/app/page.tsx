@@ -23,24 +23,21 @@ import { format } from 'date-fns';
 
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3000';
 
-// Static demo chart data used as fallback when no provider is configured
-// or the time series API returns no data.
-const DEMO_CHART_DATA = [
-  { name: 'Mon', paid: 240, unpaid: 40 },
-  { name: 'Tue', paid: 310, unpaid: 55 },
-  { name: 'Wed', paid: 280, unpaid: 48 },
-  { name: 'Thu', paid: 350, unpaid: 62 },
-  { name: 'Fri', paid: 290, unpaid: 45 },
-  { name: 'Sat', paid: 180, unpaid: 20 },
-  { name: 'Sun', paid: 200, unpaid: 25 },
-];
+/** Convert a stroop amount string to USDC units without float precision loss. */
+function formatStroops(stroops: string | undefined): string {
+  if (!stroops || stroops === '0') return '0';
+  const n = BigInt(stroops);
+  const whole = n / 10000000n;
+  const frac = (n % 10000000n).toString().padStart(7, '0').replace(/0+$/, '');
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
 
 export default function DashboardPage() {
   const { data: provider } = useProvider();
   const { data: stats, isLoading, error } = useAnalytics(provider?.id);
   const { data: timeSeriesData } = useTimeSeries(provider?.id, 60, 24);
 
-  // Build chart data from time series API, or fall back to demo data
+  // Build chart data from the time series API only — no fake/demo data.
   const chartData =
     timeSeriesData && timeSeriesData.length > 0
       ? timeSeriesData.map((point) => ({
@@ -48,7 +45,7 @@ export default function DashboardPage() {
           paid: point.paidRequests,
           unpaid: point.unpaidRequests,
         }))
-      : DEMO_CHART_DATA;
+      : [];
 
   if (error) {
     return (
@@ -85,7 +82,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="stat-value text-green-400">
-            {isLoading ? '...' : `${(Number(stats?.totalRevenue || 0) / 1e7).toFixed(4)} USDC`}
+            {isLoading ? '...' : `${formatStroops(stats?.totalRevenue)} USDC`}
           </div>
           <div className="flex items-center gap-1 mt-2 text-xs text-green-400">
             <ArrowUpRight className="w-3 h-3" /> Live on-chain
@@ -201,7 +198,9 @@ export default function DashboardPage() {
                     </span>
                   </div>
                   <div className="text-sm">
-                    <span className="text-green-400 font-medium">{caller.totalSpent} USDC</span>
+                    <span className="text-green-400 font-medium">
+                      {formatStroops(caller.totalSpent)} USDC
+                    </span>
                     <span className="text-muted-foreground ml-2">{caller.requestCount} req</span>
                   </div>
                 </div>
@@ -234,7 +233,9 @@ export default function DashboardPage() {
                     <span className="text-sm font-mono">{route.path}</span>
                   </div>
                   <div className="text-sm">
-                    <span className="text-blue-400 font-medium">{route.revenue} USDC</span>
+                    <span className="text-blue-400 font-medium">
+                      {formatStroops(route.revenue)} USDC
+                    </span>
                     <span className="text-muted-foreground ml-2">{route.requestCount} req</span>
                   </div>
                 </div>

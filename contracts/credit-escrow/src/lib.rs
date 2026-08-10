@@ -80,6 +80,9 @@ impl CreditEscrow {
     /// Deposit tokens into escrow. O(1) storage writes.
     pub fn deposit(env: Env, user: Address, amount: i128) {
         user.require_auth();
+        if amount <= 0 {
+            panic!("Amount must be positive");
+        }
 
         let config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
         if config.paused {
@@ -99,8 +102,14 @@ impl CreditEscrow {
     /// Withdraw tokens from escrow. O(1) storage writes.
     pub fn withdraw(env: Env, user: Address, amount: i128) {
         user.require_auth();
+        if amount <= 0 {
+            panic!("Amount must be positive");
+        }
 
         let config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
+        if config.paused {
+            panic!("Contract is paused");
+        }
 
         let balance_key = (BALANCES_KEY, user.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
@@ -121,6 +130,12 @@ impl CreditEscrow {
     pub fn charge(env: Env, user: Address, amount: i128, quote_id: String) {
         let config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
         config.admin.require_auth();
+        if amount <= 0 {
+            panic!("Amount must be positive");
+        }
+        if config.paused {
+            panic!("Contract is paused");
+        }
 
         let balance_key = (BALANCES_KEY, user.clone());
         let current: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
@@ -153,6 +168,22 @@ impl CreditEscrow {
     pub fn balance(env: Env, user: Address) -> i128 {
         let balance_key = (BALANCES_KEY, user);
         env.storage().instance().get(&balance_key).unwrap_or(0)
+    }
+
+    /// Transfer admin rights. Only callable by the current admin.
+    pub fn set_admin(env: Env, new_admin: Address) {
+        let mut config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
+        config.admin.require_auth();
+        config.admin = new_admin;
+        env.storage().instance().set(&CONFIG_KEY, &config);
+    }
+
+    /// Pause or resume deposits/withdrawals/charges. Only callable by admin.
+    pub fn set_paused(env: Env, paused: bool) {
+        let mut config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
+        config.admin.require_auth();
+        config.paused = paused;
+        env.storage().instance().set(&CONFIG_KEY, &config);
     }
 
     /// Get paginated usage history. O(limit) reads.
@@ -373,5 +404,108 @@ mod test {
         let client = CreditEscrowClient::new(&env, &contract_id);
         client.init(&admin, &asset);
         client.init(&admin, &asset);
+    }
+
+    // ── Authorization tests (real require_auth, no mock_all_auths) ──
+
+    #[test]
+    fn test_deposit_requires_user_auth() {
+        let env = Env::default();
+        let (admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
+
+        // No auth payload provided → require_auth() for `user` must fail.
+        let result = client.try_deposit(&user, &500_000_000i128);
+        assert!(result.is_err());
+        assert_eq!(client.balance(&user), 0);
+    }
+
+    #[test]
+    fn test_charge_requires_admin_auth() {
+        let env = Env::default();
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
+        client.mock_all_auths().deposit(&user, &500_000_000i128);
+
+        let quote_id = String::from_str(&env, "quote-auth");
+        // Caller (empty auth) is not the admin → charge must fail.
+        let result = client.try_charge(&user, &100_000_000i128, &quote_id);
+        assert!(result.is_err());
+        assert_eq!(client.balance(&user), 500_000_000i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "Amount must be positive")]
+    fn test_negative_deposit_rejected() {
+        let env = Env::default();
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
+
+        client.mock_all_auths().deposit(&user, &-100i128);
+    }
+
+    #[test]
+    #[should_panic(expected = "Amount must be positive")]
+    fn test_negative_charge_rejected() {
+        let env = Env::default();
+        let (_admin, user, asset, client) = setup(&env);
+
+        let quote_id = String::from_str(&env, "quote-neg");
+        client.mock_all_auths().charge(&user, &-100i128, &quote_id);
+    }
+
+    // ── Governance tests ──────────────────────────
+
+    #[test]
+    fn test_set_admin_transfers_control() {
+        let env = Env::default();
+        let (admin, user, asset, client) = setup(&env);
+        let new_admin = Address::generate(&env);
+
+        client.mock_all_auths().set_admin(&new_admin);
+
+        // Old admin can no longer pause; new admin can.
+        let result = client.try_set_paused(&true);
+        assert!(result.is_err());
+
+        client.mock_all_auths().set_paused(&true);
+    }
+
+    #[test]
+    fn test_set_paused_blocks_mutations() {
+        let env = Env::default();
+        let (_admin, user, asset, client) = setup(&env);
+
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
+        client.mock_all_auths().deposit(&user, &500_000_000i128);
+
+        client.mock_all_auths().set_paused(&true);
+
+        // Deposit, withdraw and charge must all fail while paused.
+        let dep = client.try_deposit(&user, &100_000_000i128);
+        assert!(dep.is_err());
+        let wd = client.try_withdraw(&user, &100_000_000i128);
+        assert!(wd.is_err());
+        let quote_id = String::from_str(&env, "quote-paused");
+        let ch = client.try_charge(&user, &100_000_000i128, &quote_id);
+        assert!(ch.is_err());
+
+        // Balance unchanged.
+        assert_eq!(client.balance(&user), 500_000_000i128);
+
+        client.mock_all_auths().set_paused(&false);
+        client.mock_all_auths().withdraw(&user, &100_000_000i128);
+        assert_eq!(client.balance(&user), 400_000_000i128);
     }
 }

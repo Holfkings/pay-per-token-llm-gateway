@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  PNPM_VERSION: "9"
+  PNPM_VERSION: '9'
 
 jobs:
   lint:
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
-          cache: "pnpm"
+          cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec nx run-many --target=lint --all
@@ -77,15 +77,57 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
-          cache: "pnpm"
+          cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm nx run database:generate
-      - run: pnpm exec nx run-many --target=test --all
+      # --coverage so jest coverageThreshold is enforced (fails on coverage regressions)
+      - run: pnpm exec nx run-many --target=test --all --coverage
         env:
           DATABASE_URL: postgresql://x402:x402_test@localhost:5432/x402_gateway_test
           REDIS_URL: redis://localhost:6379
           NODE_ENV: test
+
+  quickstart-env:
+    name: Verify .env Quickstart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      # Reproduce the documented quickstart exactly: copy the example env file,
+      # fill in a real JWT_SECRET, and assert the gateway config loads from it.
+      # Guards against regressions in @x402/config .env loading.
+      - name: Create .env from example with a real JWT_SECRET
+        run: |
+          cp .env.example .env
+          sed -i "s|^JWT_SECRET=$|JWT_SECRET=$(openssl rand -base64 32)|" .env
+
+      - name: Assert gateway config validates from .env
+        run: |
+          NODE_ENV=production node -r ts-node/register -e "
+            const { validateEnv, loadConfig } = require('./packages/config/src/index.ts');
+            validateEnv();
+            const c = loadConfig();
+            if (!c.security.jwtSecret || c.security.jwtSecret.length < 20) {
+              throw new Error('JWT_SECRET was not loaded from .env');
+            }
+            console.log('OK: .env loaded and gateway config valid');
+          "
 
   contracts:
     name: Build & Test Contracts
@@ -136,7 +178,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
-          cache: "pnpm"
+          cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm nx run database:generate
@@ -159,7 +201,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
-          cache: "pnpm"
+          cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level=critical

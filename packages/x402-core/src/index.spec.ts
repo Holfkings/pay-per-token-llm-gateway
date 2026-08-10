@@ -52,6 +52,24 @@ describe('generateQuote', () => {
     expect(quote.statusUrl).toContain('/api/v1/payments/');
   });
 
+  it('derives a short deterministic memo from the quote id (attribution)', () => {
+    const route = makeRoute();
+    const quote = generateQuote({
+      route,
+      providerAddress: 'GA5ZSE6VKPVFLEXMWJQBGHE4FJHKQIFSJMLQ7H4VFQB4UHLEH5IOVK3F',
+      gatewayBaseUrl: 'http://localhost:3000',
+      network: 'testnet',
+      quoteExpirySeconds: 300,
+      usdcIssuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
+    });
+
+    // MEMO_TEXT is capped at 28 bytes — the derived memo must be within limits
+    // and stable for the same quote id.
+    expect(quote.memo).toBeDefined();
+    expect(quote.memo!.length).toBeLessThanOrEqual(28);
+    expect(quote.memo).toBe(quote.id.replace(/-/g, '').slice(0, 24));
+  });
+
   it('generates quote with per-token pricing (default token estimate)', () => {
     const route = makeRoute({
       pricingModel: 'per_token',
@@ -248,6 +266,33 @@ describe('ReplayProtection', () => {
 
     // Now reports as used
     (mockRedis.exists as jest.Mock).mockResolvedValue(1);
+    await expect(rp.isUsed(txHash)).resolves.toBe(true);
+  });
+
+  it('atomically claims a hash exactly once via Redis SET NX', async () => {
+    const mockRedis: RedisLike = {
+      exists: jest.fn(),
+      set: jest.fn().mockResolvedValue('OK'),
+    };
+
+    const txHash = 'c1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2';
+    const rp = new ReplayProtection(mockRedis);
+
+    // First claim wins
+    await expect(rp.claim(txHash, 3600)).resolves.toBe(true);
+    expect(mockRedis.set).toHaveBeenCalledWith('x402:replay:' + txHash, '1', 'EX', '3600', 'NX');
+
+    // A concurrent caller that loses the claim receives false
+    (mockRedis.set as jest.Mock).mockResolvedValueOnce(null);
+    await expect(rp.claim(txHash, 3600)).resolves.toBe(false);
+  });
+
+  it('claims exactly once in the in-memory fallback', async () => {
+    const rp = new ReplayProtection();
+    const txHash = 'd1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2';
+
+    await expect(rp.claim(txHash, 60)).resolves.toBe(true);
+    await expect(rp.claim(txHash, 60)).resolves.toBe(false);
     await expect(rp.isUsed(txHash)).resolves.toBe(true);
   });
 });

@@ -30,6 +30,9 @@ pub struct Payment {
     pub timestamp: u64,
     pub quote_id: String,
     pub verified: bool,
+    /// True once the admin marks this payment as refunded. The hash stays
+    /// consumed (replay protection), but the record reflects reality.
+    pub refunded: bool,
 }
 
 #[contracttype]
@@ -104,6 +107,9 @@ impl PaymentVerifier {
         if config.paused {
             panic!("Contract is paused");
         }
+        if amount <= 0 {
+            panic!("Amount must be positive");
+        }
 
         // Deduplication — O(1) lookup
         let used_key = (USED_TX_KEY, tx_hash.clone());
@@ -126,6 +132,7 @@ impl PaymentVerifier {
             timestamp,
             quote_id: quote_id.clone(),
             verified: true,
+            refunded: false,
         };
         let payment_entry = (PAYMENT_KEY, idx);
         env.storage().instance().set(&payment_entry, &payment);
@@ -171,9 +178,31 @@ impl PaymentVerifier {
     }
 
     /// Mark a payment as refunded. Only callable by admin.
+    /// The tx hash remains consumed (replay protection), but the stored
+    /// record's `refunded` flag is flipped so the on-chain audit trail
+    /// reflects the refund.
     pub fn refund_payment(env: Env, tx_hash: String, reason: String) {
         let config: ContractConfig = env.storage().instance().get(&CONFIG_KEY).unwrap();
         config.admin.require_auth();
+        if config.paused {
+            panic!("Contract is paused");
+        }
+
+        let tx_entry = (TX_INDEX_KEY, tx_hash.clone());
+        let idx: u32 = env
+            .storage()
+            .instance()
+            .get(&tx_entry)
+            .expect("Payment not found");
+        let payment_entry = (PAYMENT_KEY, idx);
+        let mut payment: Payment = env.storage().instance().get(&payment_entry).unwrap();
+
+        if payment.refunded {
+            panic!("Payment already refunded");
+        }
+        payment.refunded = true;
+        env.storage().instance().set(&payment_entry, &payment);
+
         emit_payment_refunded(&env, tx_hash, reason);
     }
 
@@ -303,6 +332,125 @@ mod test {
             &String::from_str(&env, "USDC"),
             &1712345678u64,
             &String::from_str(&env, "quote-002"),
+        );
+    }
+
+    // ── Authorization & refund tests ─────────────
+
+    #[test]
+    fn test_record_payment_requires_admin_auth() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+
+        let contract_id = env.register(PaymentVerifier, ());
+        let client = PaymentVerifierClient::new(&env, &contract_id);
+        client.init(&admin);
+
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let tx_hash = String::from_str(&env, "unauth1");
+
+        // No admin signature → require_auth() must fail.
+        let result = client.try_record_payment(
+            &tx_hash,
+            &payer,
+            &payee,
+            &100_000_000i128,
+            &String::from_str(&env, "USDC"),
+            &1712345678u64,
+            &String::from_str(&env, "quote-001"),
+        );
+        assert!(result.is_err());
+        assert!(!client.is_payment_used(&tx_hash));
+    }
+
+    #[test]
+    fn test_refund_payment_updates_state() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+
+        let contract_id = env.register(PaymentVerifier, ());
+        let client = PaymentVerifierClient::new(&env, &contract_id);
+        client.init(&admin);
+
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let tx_hash = String::from_str(&env, "refund1");
+
+        client.mock_all_auths().record_payment(
+            &tx_hash,
+            &payer,
+            &payee,
+            &100_000_000i128,
+            &String::from_str(&env, "USDC"),
+            &1712345678u64,
+            &String::from_str(&env, "quote-001"),
+        );
+
+        let before = client.get_payment(&tx_hash).unwrap();
+        assert!(!before.refunded);
+
+        client
+            .mock_all_auths()
+            .refund_payment(&tx_hash, &String::from_str(&env, "customer refund"));
+
+        let after = client.get_payment(&tx_hash).unwrap();
+        assert!(after.refunded);
+        // Replay protection must still hold after a refund.
+        assert!(client.is_payment_used(&tx_hash));
+    }
+
+    #[test]
+    fn test_refund_requires_admin_auth() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+
+        let contract_id = env.register(PaymentVerifier, ());
+        let client = PaymentVerifierClient::new(&env, &contract_id);
+        client.init(&admin);
+
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let tx_hash = String::from_str(&env, "refund2");
+
+        client.mock_all_auths().record_payment(
+            &tx_hash,
+            &payer,
+            &payee,
+            &100_000_000i128,
+            &String::from_str(&env, "USDC"),
+            &1712345678u64,
+            &String::from_str(&env, "quote-001"),
+        );
+
+        // Unauthenticated refund must fail and leave the record unchanged.
+        let result = client.try_refund_payment(&tx_hash, &String::from_str(&env, "nope"));
+        assert!(result.is_err());
+        assert!(!client.get_payment(&tx_hash).unwrap().refunded);
+    }
+
+    #[test]
+    #[should_panic(expected = "Amount must be positive")]
+    fn test_record_payment_rejects_non_positive_amount() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+
+        let contract_id = env.register(PaymentVerifier, ());
+        let client = PaymentVerifierClient::new(&env, &contract_id);
+        client.init(&admin);
+
+        let payer = Address::generate(&env);
+        let payee = Address::generate(&env);
+        let tx_hash = String::from_str(&env, "zeroamt");
+
+        client.mock_all_auths().record_payment(
+            &tx_hash,
+            &payer,
+            &payee,
+            &0i128,
+            &String::from_str(&env, "USDC"),
+            &1712345678u64,
+            &String::from_str(&env, "quote-001"),
         );
     }
 }

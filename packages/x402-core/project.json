@@ -10,7 +10,7 @@
       "outputs": ["{workspaceRoot}/coverage/packages/x402-core"],
       "options": {
         "jestConfig": "packages/x402-core/jest.config.ts",
-        "passWithNoTests": true
+        "coverageReporters": ["html", "text"]
       }
     }
   }
