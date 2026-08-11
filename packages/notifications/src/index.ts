@@ -81,23 +81,135 @@ export class EmailNotificationHandler implements NotificationHandler {
   ) {}
 
   async send(payload: NotificationPayload): Promise<boolean> {
-    if (!this.options.smtpHost) {
+    if (!this.options.smtpHost || !this.options.fromAddress) {
       logger.warn(
-        'Email notifications not configured — skipping',
-        payload as unknown as Record<string, unknown>,
+        'Email notifications not configured (missing SMTP_HOST or EMAIL_FROM) — skipping',
       );
       return false;
     }
 
-    // In production, this would use nodemailer or similar.
-    // Placeholder implementation.
-    logger.info('Email notification (placeholder)', {
-      to: `provider:${payload.providerId}`,
-      subject: `x402 Gateway: ${payload.event}`,
-      ...(payload as unknown as Record<string, unknown>),
-    });
+    // Construct the email body from the notification event
+    const eventLabel = payload.event.replace(/_/g, ' ');
+    const subject = `x402 Gateway: ${eventLabel}`;
+    const body = [
+      `Event: ${payload.event}`,
+      `Provider: ${payload.providerId}`,
+      `Timestamp: ${new Date().toISOString()}`,
+      '',
+      'Data:',
+      ...Object.entries(payload.data).map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`),
+    ].join('\n');
 
-    return true;
+    // Try to use nodemailer when available (most deployments will have it).
+    // Falls back to a raw SMTP approach when nodemailer is not installed,
+    // which works for simple text-only notifications without authentication.
+    try {
+      return await this.sendWithNodemailer(subject, body);
+    } catch {
+      return await this.sendRaw(subject, body);
+    }
+  }
+
+  /** Send via nodemailer when available. */
+  private async sendWithNodemailer(subject: string, body: string): Promise<boolean> {
+    try {
+      // Dynamic import — nodemailer is an optional dependency.
+      const nodemailer = await import('nodemailer');
+
+      const transporter = nodemailer.default.createTransport({
+        host: this.options.smtpHost,
+        port: this.options.smtpPort || 587,
+        secure: this.options.smtpPort === 465,
+      });
+
+      await transporter.sendMail({
+        from: this.options.fromAddress,
+        to: this.options.fromAddress, // notifications go to the gateway operator
+        subject,
+        text: body,
+      });
+
+      logger.info('Email notification sent', { subject });
+      return true;
+    } catch (err) {
+      // nodemailer not installed or failed — re-throw so we fall back
+      if (
+        err instanceof Error &&
+        (err.message.includes('Cannot find module') || err.message.includes('nodemailer'))
+      ) {
+        logger.warn('nodemailer not installed — falling back to raw SMTP');
+      }
+      throw err;
+    }
+  }
+
+  /** Fallback raw SMTP sender (no auth, text-only). */
+  private async sendRaw(subject: string, body: string): Promise<boolean> {
+    try {
+      const net = await import('net');
+      const host = this.options.smtpHost!;
+      const port = this.options.smtpPort || 25;
+
+      await new Promise<void>((resolve, reject) => {
+        const socket = net.createConnection(port, host, () => {
+          const send = (cmd: string) => socket.write(cmd + '\r\n');
+
+          let step = 0;
+          socket.on('data', (data: Buffer) => {
+            const code = parseInt(data.toString().slice(0, 3), 10);
+            if (code >= 500) {
+              socket.destroy();
+              return reject(new Error(`SMTP error ${code}: ${data.toString().trim()}`));
+            }
+
+            switch (step++) {
+              case 0:
+                send(`HELO x402-gateway`);
+                break;
+              case 1:
+                send(`MAIL FROM:<${this.options.fromAddress}>`);
+                break;
+              case 2:
+                send(`RCPT TO:<${this.options.fromAddress}>`);
+                break;
+              case 3:
+                send('DATA');
+                break;
+              case 4: {
+                const msg = [
+                  `From: ${this.options.fromAddress}`,
+                  `To: ${this.options.fromAddress}`,
+                  `Subject: ${subject}`,
+                  'Content-Type: text/plain; charset=utf-8',
+                  '',
+                  body,
+                  '.',
+                ].join('\r\n');
+                send(msg);
+                break;
+              }
+              case 5:
+                send('QUIT');
+                socket.end();
+                resolve();
+                break;
+            }
+          });
+
+          socket.on('error', reject);
+          socket.setTimeout(10_000, () => {
+            socket.destroy();
+            reject(new Error('SMTP connection timeout'));
+          });
+        });
+      });
+
+      logger.info('Email notification sent (raw SMTP)', { subject });
+      return true;
+    } catch (err) {
+      logger.error('Raw SMTP email delivery failed', { error: String(err) });
+      return false;
+    }
   }
 }
 
@@ -115,10 +227,7 @@ export class WebhookNotificationHandler implements NotificationHandler {
 
   async send(payload: NotificationPayload, webhookUrl?: string): Promise<boolean> {
     if (!webhookUrl) {
-      logger.warn(
-        'No webhook URL configured — skipping',
-        payload as unknown as Record<string, unknown>,
-      );
+      logger.warn('No webhook URL configured — skipping');
       return false;
     }
 
@@ -257,6 +366,6 @@ export class NotificationDispatcher {
   }
 }
 
-/** Default dispatcher instance */
+/** Default dispatcher instance — handlers are registered at gateway startup. */
 export const dispatcher = new NotificationDispatcher();
 dispatcher.register(inAppHandler);
