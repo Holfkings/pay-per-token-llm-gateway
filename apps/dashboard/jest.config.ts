@@ -9,7 +9,7 @@ const config: Config = {
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   coverageDirectory: '../../coverage/apps/dashboard',
-  setupFilesAfterSetup: [],
+  setupFilesAfterEnv: [],
 };
 
 export default config;

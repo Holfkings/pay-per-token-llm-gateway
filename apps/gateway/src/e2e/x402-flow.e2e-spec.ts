@@ -5,6 +5,14 @@ import request from 'supertest';
 import { AppModule } from '../app.module';
 import { HttpExceptionFilter } from '../common/filters/http-exception.filter';
 
+// The proxy re-validates upstream DNS at request time (SSRF/rebinding
+// guard). The e2e suite's mocked upstream (api.mock-llm.example.com) does
+// not resolve publicly, so mock DNS resolution to a public IP — the guard's
+// reject path is covered by the unit tests in proxy.service.spec.ts.
+jest.mock('dns/promises', () => ({
+  lookup: jest.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+}));
+
 // ── Mock stores ────────────────────────────────
 
 let mockPaymentStore: Record<string, any>[] = [];

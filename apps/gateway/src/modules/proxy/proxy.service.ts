@@ -133,7 +133,7 @@ class CircuitBreaker {
         return 'ok'
       `;
 
-      const result = (await this.redis.eval(
+      const result = (await this.redis!.eval(
         script,
         1,
         key,

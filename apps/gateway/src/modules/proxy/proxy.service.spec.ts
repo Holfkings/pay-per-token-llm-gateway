@@ -3,6 +3,16 @@ import { ProxyService } from './proxy.service';
 import { loadConfig, setConfig } from '@x402/config';
 import type { Response } from 'express';
 
+// Mock DNS so the request-time SSRF re-validation passes for test hostnames
+// (the proxy re-resolves upstream hosts before forwarding; api.example.com
+// would otherwise fail to resolve and every test would be rejected).
+jest.mock('dns/promises', () => ({
+  lookup: jest.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+}));
+
+import { lookup } from 'dns/promises';
+const mockLookup = lookup as jest.Mock;
+
 describe('ProxyService', () => {
   let service: ProxyService;
 
@@ -17,7 +27,13 @@ describe('ProxyService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ProxyService],
+      providers: [
+        ProxyService,
+        // ProxyService optionally injects REDIS (circuit breaker falls back
+        // to the in-memory implementation when null — which is what these
+        // tests exercise).
+        { provide: 'REDIS', useValue: null },
+      ],
     }).compile();
 
     service = module.get<ProxyService>(ProxyService);
@@ -263,6 +279,32 @@ describe('ProxyService', () => {
     beforeEach(() => {
       // Fail fast without retry backoff sleeps so failure-path tests run quickly
       setConfig({ ...baseConfig, llm: { ...baseConfig.llm, maxRetries: 1 } });
+    });
+
+    afterEach(() => {
+      // Restore the default public-IP resolution for the other tests
+      mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    });
+
+    it('rejects the request when the upstream hostname resolves to a private IP', async () => {
+      const originalFetch = global.fetch;
+      global.fetch = mockOkFetch();
+
+      // Simulate a DNS rebinding attack: the hostname now resolves to the
+      // cloud metadata endpoint. Use a unique hostname so it isn't served
+      // from the 60s DNS cache populated by earlier tests.
+      const rebindUrl = 'https://rebind.example.com/v1/chat/completions';
+      mockLookup.mockResolvedValue([{ address: '169.254.169.254', family: 4 }]);
+
+      try {
+        await expect(service.forwardRequest(request, rebindUrl)).rejects.toThrow(
+          'does not resolve to a public IP address',
+        );
+        // The request must never reach the upstream
+        expect(global.fetch).not.toHaveBeenCalled();
+      } finally {
+        global.fetch = originalFetch;
+      }
     });
 
     function mockOkFetch() {
