@@ -33,6 +33,9 @@ coverage/
 *.sqlite
 prisma/migrations/*/migration_lock.toml
 
+# Vercel (local deploy-check state from scripts/vercel-deploy-check.sh)
+.vercel/
+
 # Docker
 docker-compose.override.yml
 

@@ -214,6 +214,46 @@ jobs:
       - run: pnpm nx run database:generate
       - run: pnpm exec nx run-many --target=build --all
 
+  # Mirrors Vercel's production build so deploy-breaking regressions are caught
+  # on every push/PR before they reach the deploy pipeline.
+  #
+  # Vercel's project Root Directory is `apps/dashboard` and the build command
+  # (apps/dashboard/vercel.json) is `pnpm exec next build`. The Nx
+  # `@nx/next:build` executor fails when invoked from that subdirectory with a
+  # cold cache (ENOENT: scandir 'apps/dashboard/public'), which broke deploys.
+  # The root-level `build` job above cannot catch that failure mode, so this
+  # job runs the app build from the exact directory + command Vercel uses.
+  vercel-build:
+    name: Vercel Build Check (apps/dashboard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      # Fresh runners have no Nx/Next cache; rm -rf .next keeps this explicitly
+      # on the cold-cache path Vercel hits on every deploy.
+      - name: Build dashboard from apps/dashboard (cold cache, as Vercel does)
+        working-directory: apps/dashboard
+        run: |
+          rm -rf .next
+          pnpm exec next build
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
