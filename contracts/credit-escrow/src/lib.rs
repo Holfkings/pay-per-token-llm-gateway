@@ -1018,6 +1018,185 @@ mod test {
         );
     }
 
+    // ── Accounting invariant tests ────────────────
+
+    #[test]
+    fn test_accounting_invariant_deposit_charge_refund_revenue() {
+        // The fundamental accounting equation must hold after every operation:
+        //   contract_token_balance == sum(user_balances) + REVENUE + sum(refunded)
+        //
+        // Because refunds transfer tokens out of the contract back to the user,
+        // the refunded amount is already reflected in the reduced user balance
+        // (the refund deducted from it), so the equation simplifies to:
+        //   contract_token_balance == sum(user_balances) + REVENUE
+        //
+        // Walk a full settlement cycle and assert the invariant at each step.
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+        let token_admin = Address::generate(&env);
+        let asset = env.register_stellar_asset_contract(token_admin);
+
+        let contract_id = env.register(CreditEscrow, ());
+        let client = CreditEscrowClient::new(&env, &contract_id);
+        client.init(&admin, &asset);
+
+        let token_client = token::Client::new(&env, &asset);
+
+        // Step 0: Initial invariant — contract holds 0, no balances, no revenue.
+        assert_eq!(token_client.balance(&contract_id), 0);
+        assert_eq!(client.get_revenue(), 0);
+        assert_eq!(client.balance(&user), 0);
+
+        // Step 1: Deposit 500 — contract holds 500, user balance 500, revenue 0.
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &500_000_000i128);
+        client.mock_all_auths().deposit(&user, &500_000_000i128);
+
+        assert_eq!(token_client.balance(&contract_id), 500_000_000i128);
+        assert_eq!(client.balance(&user), 500_000_000i128);
+        assert_eq!(client.get_revenue(), 0);
+        assert_eq!(
+            client.balance(&user) + client.get_revenue(),
+            token_client.balance(&contract_id)
+        );
+
+        // Step 2: Charge 200 — contract still holds 500, user balance 300,
+        //         revenue 200. Tokens don't move on charge; the revenue
+        //         counter tracks what the admin can later withdraw.
+        let q1 = String::from_str(&env, "inv-q1");
+        client.mock_all_auths().charge(&user, &200_000_000i128, &q1);
+
+        assert_eq!(token_client.balance(&contract_id), 500_000_000i128);
+        assert_eq!(client.balance(&user), 300_000_000i128);
+        assert_eq!(client.get_revenue(), 200_000_000i128);
+        assert_eq!(
+            client.balance(&user) + client.get_revenue(),
+            token_client.balance(&contract_id)
+        );
+
+        // Step 3: Refund 100 (surplus) — contract holds 400, user balance 200,
+        //         revenue 200. The refund transferred 100 tokens out.
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&contract_id, &500_000_000i128);
+        client.mock_all_auths().refund(&user, &100_000_000i128, &q1);
+
+        assert_eq!(token_client.balance(&contract_id), 400_000_000i128);
+        assert_eq!(client.balance(&user), 200_000_000i128);
+        assert_eq!(client.get_revenue(), 200_000_000i128);
+        assert_eq!(
+            client.balance(&user) + client.get_revenue(),
+            token_client.balance(&contract_id)
+        );
+
+        // Step 4: Withdraw revenue 150 — contract holds 250, user balance 200,
+        //         revenue 50.
+        let revenue_dest = Address::generate(&env);
+        client
+            .mock_all_auths()
+            .withdraw_revenue(&revenue_dest, &150_000_000i128);
+
+        assert_eq!(token_client.balance(&contract_id), 250_000_000i128);
+        assert_eq!(client.balance(&user), 200_000_000i128);
+        assert_eq!(client.get_revenue(), 50_000_000i128);
+        assert_eq!(
+            client.balance(&user) + client.get_revenue(),
+            token_client.balance(&contract_id)
+        );
+    }
+
+    #[test]
+    fn test_accounting_invariant_multiple_users() {
+        // Verify the invariant holds across independent user balances.
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+        let token_admin = Address::generate(&env);
+        let asset = env.register_stellar_asset_contract(token_admin);
+
+        let contract_id = env.register(CreditEscrow, ());
+        let client = CreditEscrowClient::new(&env, &contract_id);
+        client.init(&admin, &asset);
+
+        let token_client = token::Client::new(&env, &asset);
+
+        // Deposit from two users.
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user1, &1_000_000_000i128);
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user2, &1_000_000_000i128);
+        client.mock_all_auths().deposit(&user1, &300_000_000i128);
+        client.mock_all_auths().deposit(&user2, &200_000_000i128);
+
+        let sum_balances = client.balance(&user1) + client.balance(&user2);
+        assert_eq!(sum_balances, 500_000_000i128);
+        assert_eq!(sum_balances + client.get_revenue(), token_client.balance(&contract_id));
+
+        // Charge from both.
+        let q1 = String::from_str(&env, "inv-mq1");
+        let q2 = String::from_str(&env, "inv-mq2");
+        client.mock_all_auths().charge(&user1, &50_000_000i128, &q1);
+        client.mock_all_auths().charge(&user2, &75_000_000i128, &q2);
+
+        let sum_balances2 = client.balance(&user1) + client.balance(&user2);
+        assert_eq!(sum_balances2, 375_000_000i128);
+        assert_eq!(client.get_revenue(), 125_000_000i128);
+        assert_eq!(
+            sum_balances2 + client.get_revenue(),
+            token_client.balance(&contract_id)
+        );
+    }
+
+    #[test]
+    fn test_accounting_invariant_after_refund_from_charged_balance() {
+        // Refunding from the charged portion (revenue) must still satisfy the
+        // invariant. This is the edge case where refund touches revenue — the
+        // caller has already been charged, so their balance is already reduced.
+        // A refund here returns tokens but the revenue counter is unchanged
+        // (the charge already moved the liability from the user to revenue).
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let user = Address::generate(&env);
+        let token_admin = Address::generate(&env);
+        let asset = env.register_stellar_asset_contract(token_admin);
+
+        let contract_id = env.register(CreditEscrow, ());
+        let client = CreditEscrowClient::new(&env, &contract_id);
+        client.init(&admin, &asset);
+
+        let token_client = token::Client::new(&env, &asset);
+
+        // Deposit 1000, charge 600 — user balance 400, revenue 600.
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&user, &1_000_000_000i128);
+        client.mock_all_auths().deposit(&user, &1_000_000_000i128);
+
+        let q = String::from_str(&env, "inv-refund");
+        client.mock_all_auths().charge(&user, &600_000_000i128, &q);
+
+        // Now refund 200 from the remaining uncharged balance (400 - 200 = 200
+        // remaining). The contract transfers 200 tokens out. User balance
+        // becomes 200, revenue stays 600, contract holds 800.
+        StellarAssetClient::new(&env, &asset)
+            .mock_all_auths()
+            .mint(&contract_id, &1_000_000_000i128);
+        client.mock_all_auths().refund(&user, &200_000_000i128, &q);
+
+        assert_eq!(token_client.balance(&contract_id), 800_000_000i128);
+        assert_eq!(client.balance(&user), 200_000_000i128);
+        assert_eq!(client.get_revenue(), 600_000_000i128);
+        assert_eq!(
+            client.balance(&user) + client.get_revenue(),
+            token_client.balance(&contract_id)
+        );
+    }
+
     #[test]
     fn test_balance_survives_default_ttl() {
         // Without explicit TTL extension a deposit balance would be archived
