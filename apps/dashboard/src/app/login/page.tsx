@@ -193,11 +193,14 @@ async function getWalletAddress(type: WalletType): Promise<string | null> {
       return pubKey;
     }
 
-    // Development fallback: use a test wallet address.
-    // This is ONLY allowed when explicitly in development mode — in production,
-    // a missing wallet extension means the user cannot authenticate.
+    // Development fallback: use a throwaway testnet address for local dev.
+    // This is ONLY allowed in development mode — in production a missing
+    // wallet extension means the user cannot authenticate. The address below
+    // is a randomly generated testnet public key with no known secret; it
+    // has no funds and is safe to leave in source.
     if (process.env.NODE_ENV === 'development') {
       console.warn(`[x402] No ${type} wallet extension detected. Using dev mode address.`);
+      // ⚠️  This is a throwaway testnet address — never send real funds here.
       return 'GA5ZSE6VKPVFLEXMWJQBGHE4FJHKQIFSJMLQ7H4VFQB4UHLEH5IOVK3F';
     }
 

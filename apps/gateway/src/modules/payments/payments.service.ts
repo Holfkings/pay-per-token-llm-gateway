@@ -71,7 +71,7 @@ export class PaymentsService {
       payerAddress: verification.payerAddress,
       amount: verification.amount,
       asset: verification.asset,
-      route: '',
+      route: '', // populated by the caller if the quote/route is known
       status: 'confirmed',
       verifiedAt: new Date(verification.timestamp * 1000).toISOString(),
       ledger: verification.ledger,

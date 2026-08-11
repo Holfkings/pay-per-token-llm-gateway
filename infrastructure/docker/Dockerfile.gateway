@@ -26,6 +26,8 @@ COPY apps/gateway/package.json apps/gateway/
 # Copy source code
 COPY packages/ packages/
 COPY apps/gateway/ apps/gateway/
+# Copy the esbuild bundling script (required by the `nx build gateway` target)
+COPY scripts/ scripts/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile

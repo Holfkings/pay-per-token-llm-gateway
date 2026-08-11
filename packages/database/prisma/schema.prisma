@@ -78,6 +78,7 @@ model Payment {
   route         Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
   provider      Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
+  @@unique([txHash])
   @@index([txHash])
   @@index([payerAddress])
   @@index([providerId])

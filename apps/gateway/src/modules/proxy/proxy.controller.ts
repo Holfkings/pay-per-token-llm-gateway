@@ -20,8 +20,10 @@ import { WebhooksService } from '../webhooks/webhooks.service';
 import { RateLimitGuard } from '../../common/guards/rate-limit.guard';
 import { chatCompletionRequestSchema, txHashSchema } from '@x402/validation';
 import { calculatePrice, comparePayment } from '@x402/x402-core';
+import { getConfig } from '@x402/config';
 import { logger } from '@x402/logger';
 import { generateId } from '@x402/shared';
+import { settleEscrow } from '../x402/escrow-client';
 import type { ChatCompletionRequest, PaymentRecord, Quote, RouteConfig } from '@x402/types';
 
 @ApiTags('proxy')
@@ -369,6 +371,9 @@ export class ProxyController {
   /**
    * Forward a streaming request: pipe SSE chunks from upstream to client.
    * For per-token routes, calculates actual cost from final SSE usage chunk.
+   *
+   * After the stream completes, sends cost/receipt data as a trailing SSE
+   * event so the SDK can extract payment info from streaming responses.
    */
   private async handleStreamingForward(
     res: Response,
@@ -407,6 +412,28 @@ export class ProxyController {
           res,
           traceId,
         );
+
+        // Send cost/receipt as a trailing SSE event so the SDK can extract
+        // payment info from streaming responses (headers are already flushed).
+        if (payment) {
+          const receipt = {
+            id: payment.id,
+            quoteId: payment.quoteId,
+            txHash: payment.txHash,
+            payerAddress: payment.payerAddress,
+            amount: payment.amount?.toString(),
+            asset: payment.asset,
+            status: payment.status,
+            actualCost: costResult.actualCost,
+            tokensUsed: totalTokens ?? null,
+          };
+          try {
+            res.write(`data: ${JSON.stringify({ x402_receipt: receipt })}\n\n`);
+            res.write('data: [DONE]\n\n');
+          } catch {
+            /* client disconnected — stream already ended */
+          }
+        }
 
         await this.analyticsService.recordPaidRequest(
           route.path,
@@ -590,6 +617,26 @@ export class ProxyController {
         paidAmount,
         shortfall: comparison.surplus,
       });
+    }
+
+    // Escrow settlement: charge actual cost + refund surplus from the
+    // caller's credit-escrow balance. Best-effort (fire-and-forget) — the
+    // LLM response has already been delivered; on-chain settlement must
+    // never block it.
+    if (payment?.payerAddress) {
+      const config = getConfig();
+      settleEscrow({
+        enabled: config.payment.escrowSettlementEnabled,
+        contractId: config.contracts.creditEscrow,
+        rpcUrl: config.stellar.sorobanRpcUrl,
+        networkPassphrase: config.stellar.networkPassphrase,
+        adminSecret: config.payment.contractAdminSecret,
+        user: payment.payerAddress,
+        actualCost,
+        surplus: comparison.surplus,
+        isOverpaid: comparison.isOverpaid,
+        quoteId: payment.quoteId,
+      }).catch((err) => logger.error('Escrow settlement error', { traceId, error: String(err) }));
     }
 
     return {

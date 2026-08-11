@@ -88,6 +88,36 @@ jobs:
           REDIS_URL: redis://localhost:6379
           NODE_ENV: test
 
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read Node version from .nvmrc
+        id: nvm
+        run: echo "NODE_VERSION=$(cat .nvmrc)" >> $GITHUB_OUTPUT
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.nvm.outputs.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm nx run database:generate
+      # The e2e suite is fully self-contained (mocks @x402/database + ioredis
+      # and overrides the REDIS/PRISMA providers), so no Postgres/Redis
+      # services are required. --coverage enforces the e2e coverageThreshold.
+      - run: pnpm exec nx run gateway:test:e2e --coverage
+        env:
+          NODE_ENV: test
+
   quickstart-env:
     name: Verify .env Quickstart
     runs-on: ubuntu-latest

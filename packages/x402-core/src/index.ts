@@ -25,6 +25,8 @@ export interface QuoteGeneratorOptions {
   network: StellarNetwork;
   quoteExpirySeconds: number;
   usdcIssuer: string;
+  /** Minimum payment amount in stroops — quotes below this are clamped. */
+  minPaymentAmount?: string;
   /** Estimated max tokens for per-token pricing (from request max_tokens) */
   estimatedTokens?: number;
 }
@@ -38,6 +40,9 @@ const DEFAULT_TOKEN_ESTIMATE = 4096;
  * For flat pricing: amount = flatPrice (exact charge per request).
  * For per-token pricing: amount = perTokenPrice × estimatedTokens (deposit).
  *   The actual cost is calculated after the LLM response based on usage.total_tokens.
+ *
+ * Amounts are clamped to {@link QuoteGeneratorOptions.minPaymentAmount} when
+ * provided — a route with zero or near-zero pricing cannot grant free access.
  */
 export function generateQuote(options: QuoteGeneratorOptions): Quote {
   const expiresAt = nowUnix() + options.quoteExpirySeconds;
@@ -56,6 +61,15 @@ export function generateQuote(options: QuoteGeneratorOptions): Quote {
   } else {
     // Flat: charge flat price
     amount = options.route.flatPrice || '0';
+  }
+
+  // Enforce minimum payment amount — a route configured with flatPrice=0
+  // (or a degenerate per-token config) must not grant free access.
+  if (options.minPaymentAmount) {
+    const min = BigInt(options.minPaymentAmount);
+    if (BigInt(amount) < min) {
+      amount = min.toString();
+    }
   }
 
   // MEMO_TEXT is limited to 28 bytes. Derive a deterministic short memo from
@@ -130,6 +144,8 @@ export interface VerifyPaymentOptions {
   horizonUrl: string;
   sorobanRpcUrl: string;
   networkPassphrase: string;
+  /** Minimum payment amount in stroops. Payments below this are rejected. */
+  minPaymentAmount?: string;
 }
 
 /**
@@ -225,6 +241,14 @@ export async function verifyStellarPayment(
       } else {
         // Flat: exact amount match (both sides in stroops)
         requiredAmount = BigInt(quote.amount);
+      }
+
+      // Enforce global minimum — a route with flatPrice=0 must not grant
+      // free access even if the quote was generated before the min was
+      // configured (defense in depth).
+      if (options.minPaymentAmount) {
+        const min = BigInt(options.minPaymentAmount);
+        if (requiredAmount < min) requiredAmount = min;
       }
     } catch {
       // Malformed quote price → nothing can match

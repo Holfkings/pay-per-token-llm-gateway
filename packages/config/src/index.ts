@@ -85,6 +85,13 @@ export interface GatewayConfig {
     /** Secret key of the contract admin (for on-chain payment recording).
      * Optional — if not set, on-chain recording is skipped. */
     contractAdminSecret?: string;
+    /**
+     * Opt-in per-token on-chain settlement via the credit-escrow contract:
+     * after each metered LLM response the gateway charges the actual cost from
+     * the caller's escrow balance and auto-refunds any surplus. Requires
+     * `CONTRACT_ADMIN_SECRET` and an escrow contract funded by deposits.
+     */
+    escrowSettlementEnabled: boolean;
   };
 
   /** Deployed Soroban contract addresses */
@@ -265,6 +272,7 @@ export function loadConfig(): GatewayConfig {
       quoteExpirySeconds: parseInt(process.env.QUOTE_EXPIRY_SECONDS || '300', 10),
       minPaymentAmount: process.env.MIN_PAYMENT_AMOUNT || '10000', // 0.00001 XLM in stroops
       contractAdminSecret: process.env.CONTRACT_ADMIN_SECRET || undefined,
+      escrowSettlementEnabled: process.env.ESCROW_SETTLEMENT_ENABLED === 'true',
     },
 
     llm: {

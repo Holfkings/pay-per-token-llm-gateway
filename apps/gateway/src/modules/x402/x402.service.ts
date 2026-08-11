@@ -45,6 +45,7 @@ export class X402Service {
       network: config.stellar.network,
       quoteExpirySeconds: config.payment.quoteExpirySeconds,
       usdcIssuer: config.payment.usdcIssuer,
+      minPaymentAmount: config.payment.minPaymentAmount,
       estimatedTokens,
     });
 
@@ -119,6 +120,7 @@ export class X402Service {
       horizonUrl: config.stellar.horizonUrl,
       sorobanRpcUrl: config.stellar.sorobanRpcUrl,
       networkPassphrase: config.stellar.networkPassphrase,
+      minPaymentAmount: config.payment.minPaymentAmount,
     });
 
     if (verification.verified) {

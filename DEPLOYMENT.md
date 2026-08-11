@@ -2,17 +2,17 @@
 
 This guide covers deploying the two components of the x402 LLM Gateway:
 
-| Component | Platform | Type | Why |
-|---|---|---|---|
-| **Gateway** (NestJS) | Railway | Container | Long-running server with WebSockets, needs PostgreSQL + Redis |
-| **Dashboard** (Next.js) | Vercel | Serverless | Next.js is natively supported with zero config |
+| Component               | Platform | Type       | Why                                                           |
+| ----------------------- | -------- | ---------- | ------------------------------------------------------------- |
+| **Gateway** (NestJS)    | Railway  | Container  | Long-running server with WebSockets, needs PostgreSQL + Redis |
+| **Dashboard** (Next.js) | Vercel   | Serverless | Next.js is natively supported with zero config                |
 
 ---
 
 ## Prerequisites
 
 - GitHub repository with the code pushed
-- A Stellar testnet account with secret key (already created: `GCDD3SYSIQFT5PSRJHPHYYMCBTJKQPAMTI2GSZH4E6BFTUIVDUCGF3FK`)
+- A Stellar testnet account with secret key (generate one with the Stellar CLI: `stellar keys generate --global my-account --network testnet`, then fund it from the [Stellar testnet faucet](https://laboratory.stellar.org/#account-creator?network=test))
 - Upstream LLM API key (e.g., OpenAI API key)
 
 ---
@@ -35,17 +35,17 @@ Go to [railway.app](https://railway.app) and sign up with GitHub.
 1. Select the gateway service from your repo
 2. Under **Settings** → **Environment**, add:
 
-| Variable | Value |
-|---|---|
-| `NODE_ENV` | `production` |
-| `STELLAR_NETWORK` | `testnet` |
-| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (Railway reference) |
-| `REDIS_URL` | `${{Redis.REDIS_URL}}` (Railway reference) |
-| `JWT_SECRET` | (Generate: `openssl rand -base64 32`) |
-| `USDC_ISSUER` | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` |
-| `CORS_ORIGINS` | `https://your-dashboard.vercel.app` |
-| `UPSTREAM_API_KEY_YOUR_PROVIDER_ID` | `sk-your-openai-api-key` |
-| `PORT` | `3000` |
+| Variable                            | Value                                                      |
+| ----------------------------------- | ---------------------------------------------------------- |
+| `NODE_ENV`                          | `production`                                               |
+| `STELLAR_NETWORK`                   | `testnet`                                                  |
+| `DATABASE_URL`                      | `${{Postgres.DATABASE_URL}}` (Railway reference)           |
+| `REDIS_URL`                         | `${{Redis.REDIS_URL}}` (Railway reference)                 |
+| `JWT_SECRET`                        | (Generate: `openssl rand -base64 32`)                      |
+| `USDC_ISSUER`                       | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` |
+| `CORS_ORIGINS`                      | `https://your-dashboard.vercel.app`                        |
+| `UPSTREAM_API_KEY_YOUR_PROVIDER_ID` | `sk-your-openai-api-key`                                   |
+| `PORT`                              | `3000`                                                     |
 
 3. Under **Settings** → **Build**, set:
    - **Dockerfile path**: `infrastructure/docker/Dockerfile.gateway`
@@ -56,6 +56,7 @@ Go to [railway.app](https://railway.app) and sign up with GitHub.
 ### 1.4 Deploy
 
 Click **Deploy**. The gateway will:
+
 1. Build the Docker image
 2. Connect to PostgreSQL and Redis
 3. Run Prisma migrations
@@ -77,22 +78,32 @@ Go to [vercel.com](https://vercel.com) and sign up with GitHub.
 2. Select your x402-llm-gateway repository
 3. Configure:
 
-| Setting | Value |
-|---|---|
-| **Framework** | Next.js |
+| Setting            | Value            |
+| ------------------ | ---------------- |
+| **Framework**      | Next.js          |
 | **Root Directory** | `apps/dashboard` |
-| **Build Command** | `cd ../.. && pnpm install --frozen-lockfile && pnpm exec nx build dashboard` |
-| **Output Directory** | `../../dist/apps/dashboard` |
+
+Leave **Build Command** and **Output Directory** empty — they're provided by
+`apps/dashboard/vercel.json` (the Nx `@nx/next:build` executor outputs `.next`
+inside `apps/dashboard`, which is exactly where Vercel looks for it).
 
 ### 2.3 Set Environment Variables
 
-| Variable | Value |
-|---|---|
+| Variable                  | Value                                 |
+| ------------------------- | ------------------------------------- |
 | `NEXT_PUBLIC_GATEWAY_URL` | `https://your-gateway.up.railway.app` |
+
+> ⚠️ This value is baked into the client bundle at **build time**, so set it in
+> the Vercel project → **Settings → Environment Variables** **before** the first
+> build. If the gateway isn't deployed yet, use its future URL — the dashboard
+> builds fine without it, but API calls will fail until it points at a live
+> gateway.
 
 ### 2.4 Deploy
 
-Click **Deploy**. Vercel will build and deploy the Next.js dashboard.
+Click **Deploy**. Vercel will install the monorepo dependencies (via
+`pnpm install --frozen-lockfile`), build the dashboard with Nx, and serve the
+`.next` output.
 
 ---
 
@@ -108,8 +119,8 @@ curl -X POST https://your-gateway.up.railway.app/api/v1/providers \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
     "name": "My LLM Provider",
-    "walletAddress": "GA5ZSE6VKPVFLEXMWJQBGHE4FJHKQIFSJMLQ7H4VFQB4UHLEH5IOVK3F",
-    "payoutWalletAddress": "GCDD3SYSIQFT5PSRJHPHYYMCBTJKQPAMTI2GSZH4E6BFTUIVDUCGF3FK"
+    "walletAddress": "YOUR_STELLAR_WALLET_ADDRESS",
+    "payoutWalletAddress": "YOUR_PAYOUT_WALLET_ADDRESS"
   }'
 ```
 
@@ -144,6 +155,7 @@ curl -X POST https://your-gateway.up.railway.app/api/v1/chat/completions \
 ```
 
 **Expected Response (402):**
+
 ```json
 {
   "status": 402,
@@ -164,7 +176,7 @@ Using the Stellar CLI or any Stellar wallet, send the quoted amount to the payme
 
 ```bash
 stellar tx new --source alice --network testnet \
-  --op payment --destination GA5ZSE... \
+  --op payment --destination YOUR_GATEWAY_ADDRESS \
   --asset USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5 \
   --amount 0.1
 ```
@@ -181,6 +193,7 @@ curl -X POST https://your-gateway.up.railway.app/api/v1/chat/completions \
 ### 4.4 Expected Success Response
 
 The gateway verifies the payment on-chain and proxies to the LLM:
+
 ```json
 {
   "id": "chatcmpl-...",
@@ -194,11 +207,11 @@ The gateway verifies the payment on-chain and proxies to the LLM:
 
 ## Deployed Contract Addresses (Testnet)
 
-| Contract | Address |
-|---|---|
+| Contract         | Address                                                    |
+| ---------------- | ---------------------------------------------------------- |
 | payment-verifier | `CDHGI3A2BXRC5AQDPWEEXUDQMDXTDZYBCLJZWSE5XZKMVEGJ5LLHA4CZ` |
-| credit-escrow | `CCE7AWVXPO57W5KDONOPMHDV4S5UBUBMHNJVSAVPL7AZGMD4WQN6WVAP` |
-| multisig | `CDMBVMMNJVAJVAV3T2TAL2TAACGTKYUS45RXNLCYKYUC3VGHBI66NWAA` |
+| credit-escrow    | `CCE7AWVXPO57W5KDONOPMHDV4S5UBUBMHNJVSAVPL7AZGMD4WQN6WVAP` |
+| multisig         | `CDMBVMMNJVAJVAV3T2TAL2TAACGTKYUS45RXNLCYKYUC3VGHBI66NWAA` |
 
 ---
 

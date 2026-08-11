@@ -156,7 +156,9 @@ export class ProxyService {
    * directly to the client response. Handles client disconnection gracefully
    * and extracts usage tokens from the final stream chunk.
    *
-   * On completion, calls `onDone` with the total token count (if available).
+   * On completion, calls `onDone` with the total token count (if available)
+   * BEFORE closing the response stream so the callback can write trailing
+   * SSE data (receipt, cost info) while the response is still writable.
    */
   async forwardStreamRequest(
     request: ChatCompletionRequest,
@@ -164,7 +166,7 @@ export class ProxyService {
     res: Response,
     apiKey?: string,
     traceId?: string,
-    onDone?: (totalTokens?: number) => void,
+    onDone?: (totalTokens?: number) => void | Promise<void>,
   ): Promise<void> {
     const config = getConfig();
     const startTime = Date.now();
@@ -298,6 +300,12 @@ export class ProxyService {
       reader.releaseLock();
       res.removeListener('close', onClientClose);
 
+      // Call onDone BEFORE closing the stream so the callback can write
+      // trailing SSE data (receipt, cost info) while the response is
+      // still writable. Must be awaited — otherwise the async writes
+      // in the callback would race with res.end() below.
+      await onDone?.(totalTokens);
+
       if (!res.writableEnded) {
         res.end();
       }
@@ -309,8 +317,6 @@ export class ProxyService {
         tokens: totalTokens,
         aborted,
       });
-
-      onDone?.(totalTokens);
     }
   }
 
