@@ -1,9 +1,52 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import type { Response } from 'express';
 import type { ChatCompletionRequest, ChatCompletionResponse } from '@x402/types';
 import { getConfig } from '@x402/config';
 import { logger } from '@x402/logger';
 import { retry, NonRetryableError } from '@x402/shared';
+import type { Redis } from 'ioredis';
+import { isPublicIp } from '../webhooks/webhooks.service';
+import { lookup } from 'dns/promises';
+
+// ── DNS Rebinding Protection ─────────────────
+
+interface DnsCacheEntry {
+  ips: string[];
+  expiresAt: number;
+}
+
+/**
+ * DNS resolution cache with 60-second TTL for upstream SSRF re-validation.
+ *
+ * At route configuration time the upstream URL's hostname is resolved and
+ * validated (public IP only). At proxy time, the resolved IPs are re-checked
+ * against a short-lived cache to catch DNS rebinding attacks — a provider
+ * who controls the domain could rebind it to 169.254.169.254 after config
+ * passes the SSRF guard.
+ */
+const dnsCache = new Map<string, DnsCacheEntry>();
+const DNS_CACHE_TTL_MS = 60_000;
+
+async function isUpstreamHostPublic(hostname: string): Promise<boolean> {
+  const now = Date.now();
+  const cached = dnsCache.get(hostname);
+  if (cached && cached.expiresAt > now) {
+    // Cache hit — re-check all cached IPs against public-IP rules.
+    return cached.ips.every((ip) => isPublicIp(ip));
+  }
+
+  // Cache miss or expired — re-resolve.
+  try {
+    const addresses = (await lookup(hostname, { all: true })).map((a) => a.address);
+    dnsCache.set(hostname, { ips: addresses, expiresAt: now + DNS_CACHE_TTL_MS });
+    return addresses.length > 0 && addresses.every((ip) => isPublicIp(ip));
+  } catch {
+    // DNS resolution failure at proxy time: reject the request rather
+    // than risk connecting to an unknown address.
+    logger.warn('Upstream DNS resolution failed at proxy time', { hostname });
+    return false;
+  }
+}
 
 // ── Circuit Breaker ──────────────────────────
 
@@ -14,48 +57,189 @@ interface CircuitState {
 }
 
 /**
- * Simple in-memory circuit breaker per upstream URL.
+ * Redis-backed circuit breaker per upstream URL.
  *
- * After N consecutive failures, the circuit opens and immediately rejects
- * all calls for a cooldown period. After the cooldown, one test call is
- * allowed (half-open). If it succeeds, the circuit closes.
+ * When a Redis client is available, circuit state is persisted to Redis with
+ * proper TTLs so all gateway instances share the same circuit. Falls back to
+ * an in-memory Map when Redis is not available (single-instance deployments).
  */
 class CircuitBreaker {
   private readonly circuits = new Map<string, CircuitState>();
+  private readonly redis: Redis | null;
+
+  private static readonly KEY_PREFIX = 'x402:circuit:';
 
   constructor(
+    redis: Redis | null,
     private readonly failureThreshold = 5,
     private readonly cooldownMs = 30_000,
-  ) {}
+  ) {
+    this.redis = redis;
+  }
 
-  /**
-   * Check if a request to `upstreamUrl` is allowed.
-   * Throws if the circuit is open.
-   */
-  checkCircuit(upstreamUrl: string): void {
-    const circuit = this.circuits.get(upstreamUrl);
+  async checkCircuit(upstreamUrl: string): Promise<void> {
+    const hostname = new URL(upstreamUrl).hostname;
+
+    if (this.redis) {
+      return this.checkCircuitRedis(hostname);
+    }
+    return this.checkCircuitMemory(hostname);
+  }
+
+  async recordSuccess(upstreamUrl: string): Promise<void> {
+    const hostname = new URL(upstreamUrl).hostname;
+
+    if (this.redis) {
+      await this.recordSuccessRedis(hostname);
+    } else {
+      this.recordSuccessMemory(hostname);
+    }
+  }
+
+  async recordFailure(upstreamUrl: string): Promise<void> {
+    const hostname = new URL(upstreamUrl).hostname;
+
+    if (this.redis) {
+      await this.recordFailureRedis(hostname);
+    } else {
+      this.recordFailureMemory(hostname);
+    }
+  }
+
+  // ── Redis-backed circuit breaker ────────────
+
+  private async checkCircuitRedis(hostname: string): Promise<void> {
+    const key = CircuitBreaker.KEY_PREFIX + hostname;
+
+    try {
+      // Atomic Lua script: check if circuit is open, allow half-open probe.
+      const script = `
+        local state = redis.call('GET', KEYS[1] .. ':state')
+        if state == 'open' then
+          local failures_key = KEYS[1] .. ':failures'
+          local last_failure = redis.call('ZREVRANGE', failures_key, 0, 0, 'WITHSCORES')
+          if #last_failure > 0 then
+            local ts = tonumber(last_failure[2])
+            local elapsed = tonumber(ARGV[1]) - ts
+            local cooldown = tonumber(ARGV[2])
+            if elapsed >= cooldown then
+              -- Half-open: allow one probe call
+              redis.call('SET', KEYS[1] .. ':state', 'half-open', 'EX', ARGV[3])
+              return 'half-open'
+            end
+            return 'open:' .. math.ceil((cooldown - elapsed) / 1000)
+          end
+        end
+        return 'ok'
+      `;
+
+      const result = (await this.redis.eval(
+        script,
+        1,
+        key,
+        String(Date.now()),
+        String(this.cooldownMs),
+        String(Math.ceil(this.cooldownMs / 1000) + 10),
+      )) as string;
+
+      if (result === 'ok' || result === 'half-open') {
+        if (result === 'half-open') {
+          logger.warn('Circuit half-open — allowing test call', { hostname });
+        }
+        return;
+      }
+
+      const retryIn = result.replace('open:', '');
+      throw new Error(`Circuit breaker open for ${hostname}. Retry in ${retryIn}s.`);
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith('Circuit breaker open')) {
+        throw err;
+      }
+      // Redis error → fall through (allow the request).
+      logger.warn('Circuit breaker Redis check failed, allowing request', {
+        hostname,
+        error: String(err),
+      });
+    }
+  }
+
+  private async recordSuccessRedis(hostname: string): Promise<void> {
+    try {
+      const key = CircuitBreaker.KEY_PREFIX + hostname;
+      await this.redis?.del(key + ':state', key + ':failures');
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  private async recordFailureRedis(hostname: string): Promise<void> {
+    try {
+      const key = CircuitBreaker.KEY_PREFIX + hostname;
+      const failuresKey = key + ':failures';
+      const now = Date.now();
+
+      // Add failure timestamp to sorted set + set TTL.
+      const script = `
+        redis.call('ZADD', KEYS[1], ARGV[1], ARGV[2])
+        redis.call('EXPIRE', KEYS[1], ARGV[3])
+        local count = redis.call('ZCARD', KEYS[1])
+        if count >= tonumber(ARGV[4]) then
+          redis.call('SET', KEYS[2], 'open', 'EX', ARGV[5])
+          return 'open'
+        end
+        return 'closed'
+      `;
+
+      const result = (await this.redis!.eval(
+        script,
+        2,
+        failuresKey,
+        key + ':state',
+        String(now),
+        `${now}-${Math.random().toString(36).slice(2, 9)}`,
+        String(this.cooldownMs / 1000 + 10),
+        String(this.failureThreshold),
+        String(Math.ceil(this.cooldownMs / 1000) + 10),
+      )) as string;
+
+      if (result === 'open') {
+        logger.error('Circuit breaker opened (Redis)', {
+          hostname,
+          failures: this.failureThreshold,
+          cooldownMs: this.cooldownMs,
+        });
+      }
+    } catch (err) {
+      logger.warn('Circuit breaker Redis failure recording failed', {
+        hostname,
+        error: String(err),
+      });
+    }
+  }
+
+  // ── In-memory fallback ─────────────────────
+
+  private checkCircuitMemory(hostname: string): void {
+    const circuit = this.circuits.get(hostname);
     if (!circuit?.open) return;
 
     const elapsed = Date.now() - circuit.lastFailureTime;
     if (elapsed >= this.cooldownMs) {
-      // Half-open: allow one test call
       circuit.open = false;
-      logger.warn('Circuit half-open — allowing test call', { upstreamUrl });
+      logger.warn('Circuit half-open — allowing test call', { upstreamUrl: hostname });
       return;
     }
 
     const retryIn = Math.ceil((this.cooldownMs - elapsed) / 1000);
-    throw new Error(`Circuit breaker open for ${upstreamUrl}. Retry in ${retryIn}s.`);
+    throw new Error(`Circuit breaker open for ${hostname}. Retry in ${retryIn}s.`);
   }
 
-  /** Record a successful call — reset the circuit. */
-  recordSuccess(upstreamUrl: string): void {
-    this.circuits.delete(upstreamUrl);
+  private recordSuccessMemory(hostname: string): void {
+    this.circuits.delete(hostname);
   }
 
-  /** Record a failed call — increment failure count and possibly open circuit. */
-  recordFailure(upstreamUrl: string): void {
-    const circuit = this.circuits.get(upstreamUrl) || {
+  private recordFailureMemory(hostname: string): void {
+    const circuit = this.circuits.get(hostname) || {
       failures: 0,
       lastFailureTime: 0,
       open: false,
@@ -67,13 +251,13 @@ class CircuitBreaker {
     if (circuit.failures >= this.failureThreshold) {
       circuit.open = true;
       logger.error('Circuit breaker opened', {
-        upstreamUrl,
+        upstreamUrl: hostname,
         failures: circuit.failures,
         cooldownMs: this.cooldownMs,
       });
     }
 
-    this.circuits.set(upstreamUrl, circuit);
+    this.circuits.set(hostname, circuit);
   }
 }
 
@@ -81,7 +265,11 @@ class CircuitBreaker {
 
 @Injectable()
 export class ProxyService {
-  private readonly circuitBreaker = new CircuitBreaker();
+  private readonly circuitBreaker: CircuitBreaker;
+
+  constructor(@Inject('REDIS') redis: Redis | null) {
+    this.circuitBreaker = new CircuitBreaker(redis);
+  }
 
   /**
    * Forward a request to the upstream LLM endpoint (non-streaming).
@@ -95,8 +283,18 @@ export class ProxyService {
     const config = getConfig();
     const startTime = Date.now();
 
+    // DNS rebinding guard: re-validate the upstream hostname at proxy time.
+    // The URL was already validated at route-config time, but DNS answers
+    // can change between save and send (TOCTOU).
+    const upstreamHost = new URL(upstreamUrl).hostname;
+    if (!(await isUpstreamHostPublic(upstreamHost))) {
+      throw new NonRetryableError(
+        `Upstream host ${upstreamHost} does not resolve to a public IP address`,
+      );
+    }
+
     // Circuit breaker check — fast-fail if the upstream has been failing
-    this.circuitBreaker.checkCircuit(upstreamUrl);
+    await this.circuitBreaker.checkCircuit(upstreamUrl);
 
     try {
       const response = await retry(
@@ -133,7 +331,7 @@ export class ProxyService {
         },
       );
 
-      this.circuitBreaker.recordSuccess(upstreamUrl);
+      await this.circuitBreaker.recordSuccess(upstreamUrl);
 
       const data = (await response.json()) as ChatCompletionResponse;
       const responseTime = Date.now() - startTime;
@@ -146,7 +344,7 @@ export class ProxyService {
 
       return { response: data, responseTime };
     } catch (error) {
-      this.circuitBreaker.recordFailure(upstreamUrl);
+      await this.circuitBreaker.recordFailure(upstreamUrl);
       throw error;
     }
   }
@@ -171,8 +369,16 @@ export class ProxyService {
     const config = getConfig();
     const startTime = Date.now();
 
+    // DNS rebinding guard (same rationale as forwardRequest).
+    const upstreamHost = new URL(upstreamUrl).hostname;
+    if (!(await isUpstreamHostPublic(upstreamHost))) {
+      throw new NonRetryableError(
+        `Upstream host ${upstreamHost} does not resolve to a public IP address`,
+      );
+    }
+
     // Circuit breaker check — fast-fail if the upstream has been failing
-    this.circuitBreaker.checkCircuit(upstreamUrl);
+    await this.circuitBreaker.checkCircuit(upstreamUrl);
 
     // Use configured streaming timeout (defaults to 10 minutes)
     const streamTimeout = config.llm.streamTimeout ?? 600_000;
@@ -194,17 +400,17 @@ export class ProxyService {
         signal: abortController.signal,
       });
     } catch (err) {
-      this.circuitBreaker.recordFailure(upstreamUrl);
+      await this.circuitBreaker.recordFailure(upstreamUrl);
       throw err;
     }
 
     if (!upstreamResponse.ok) {
       const errorBody = await upstreamResponse.text();
-      this.circuitBreaker.recordFailure(upstreamUrl);
+      await this.circuitBreaker.recordFailure(upstreamUrl);
       throw new Error(`Upstream error: ${upstreamResponse.status} ${errorBody}`);
     }
 
-    this.circuitBreaker.recordSuccess(upstreamUrl);
+    await this.circuitBreaker.recordSuccess(upstreamUrl);
 
     if (!upstreamResponse.body) {
       throw new Error('Upstream returned no response body for streaming');
@@ -282,7 +488,7 @@ export class ProxyService {
       }
     } catch (err) {
       if (!aborted) {
-        this.circuitBreaker.recordFailure(upstreamUrl);
+        await this.circuitBreaker.recordFailure(upstreamUrl);
         logger.error('Stream forwarding error', { error: String(err) });
         if (!res.writableEnded) {
           try {
