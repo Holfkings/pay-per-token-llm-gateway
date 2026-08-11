@@ -84,8 +84,13 @@ Go to [vercel.com](https://vercel.com) and sign up with GitHub.
 | **Root Directory** | `apps/dashboard` |
 
 Leave **Build Command** and **Output Directory** empty — they're provided by
-`apps/dashboard/vercel.json` (the Nx `@nx/next:build` executor outputs `.next`
-inside `apps/dashboard`, which is exactly where Vercel looks for it).
+`apps/dashboard/vercel.json` (`pnpm exec next build` outputs `.next` inside
+`apps/dashboard`, which is exactly where Vercel looks for it).
+
+> ⚠️ Keep the build command as `next build` — not `nx build dashboard`.
+> Vercel runs the command from the Root Directory (`apps/dashboard`), and the
+> Nx `@nx/next:build` executor fails there with
+> `ENOENT: scandir 'apps/dashboard/public'` on a cold cache.
 
 ### 2.3 Set Environment Variables
 
@@ -102,8 +107,8 @@ inside `apps/dashboard`, which is exactly where Vercel looks for it).
 ### 2.4 Deploy
 
 Click **Deploy**. Vercel will install the monorepo dependencies (via
-`pnpm install --frozen-lockfile`), build the dashboard with Nx, and serve the
-`.next` output.
+`pnpm install --frozen-lockfile`), build the dashboard with `next build`, and
+serve the `.next` output.
 
 ---
 
