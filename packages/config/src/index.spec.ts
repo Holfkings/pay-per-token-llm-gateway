@@ -86,6 +86,67 @@ describe('config security hardening', () => {
     });
   });
 
+  describe('Stellar network presets', () => {
+    const TESTNET_USDC_ISSUER = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
+    const MAINNET_USDC_ISSUER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
+
+    it('defaults to testnet endpoints and the testnet USDC issuer when STELLAR_NETWORK is unset', () => {
+      process.env.NODE_ENV = 'test';
+      process.env.JWT_SECRET = 'a-real-random-256-bit-secret';
+      delete process.env.STELLAR_NETWORK;
+      delete process.env.USDC_ISSUER;
+      delete process.env.HORIZON_URL;
+      delete process.env.SOROBAN_RPC_URL;
+
+      const config = loadConfig();
+      expect(config.stellar.network).toBe('testnet');
+      expect(config.stellar.horizonUrl).toBe('https://horizon-testnet.stellar.org');
+      expect(config.stellar.sorobanRpcUrl).toBe('https://soroban-testnet.stellar.org');
+      expect(config.stellar.networkPassphrase).toBe('Test SDF Network ; September 2015');
+      expect(config.payment.usdcIssuer).toBe(TESTNET_USDC_ISSUER);
+    });
+
+    it('loads mainnet endpoints, passphrase, and the mainnet USDC issuer when STELLAR_NETWORK=mainnet', () => {
+      process.env.NODE_ENV = 'test';
+      process.env.JWT_SECRET = 'a-real-random-256-bit-secret';
+      process.env.STELLAR_NETWORK = 'mainnet';
+      delete process.env.USDC_ISSUER;
+      delete process.env.HORIZON_URL;
+      delete process.env.SOROBAN_RPC_URL;
+
+      const config = loadConfig();
+      expect(config.stellar.network).toBe('mainnet');
+      expect(config.stellar.horizonUrl).toBe('https://horizon.stellar.org');
+      expect(config.stellar.sorobanRpcUrl).toBe('https://soroban-mainnet.stellar.org');
+      expect(config.stellar.networkPassphrase).toBe(
+        'Public Global Stellar Network ; September 2015',
+      );
+      expect(config.payment.usdcIssuer).toBe(MAINNET_USDC_ISSUER);
+    });
+
+    it('keeps the testnet USDC issuer on futurenet', () => {
+      process.env.NODE_ENV = 'test';
+      process.env.JWT_SECRET = 'a-real-random-256-bit-secret';
+      process.env.STELLAR_NETWORK = 'futurenet';
+      delete process.env.USDC_ISSUER;
+
+      const config = loadConfig();
+      expect(config.payment.usdcIssuer).toBe(TESTNET_USDC_ISSUER);
+    });
+
+    it('lets an explicit USDC_ISSUER env var override the network default', () => {
+      process.env.NODE_ENV = 'test';
+      process.env.JWT_SECRET = 'a-real-random-256-bit-secret';
+      process.env.STELLAR_NETWORK = 'mainnet';
+      process.env.USDC_ISSUER = 'GCUSTOMISSUERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
+
+      const config = loadConfig();
+      expect(config.payment.usdcIssuer).toBe('GCUSTOMISSUERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
+      // The network preset itself is still mainnet.
+      expect(config.stellar.network).toBe('mainnet');
+    });
+  });
+
   describe('validateEnv', () => {
     it('throws when JWT_SECRET is missing outside of test', () => {
       delete process.env.JWT_SECRET;
