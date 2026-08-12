@@ -14,7 +14,8 @@ const mockCreateHorizonServer = jest.fn(() => ({
 
 jest.mock('@x402/wallet', () => ({
   buildPaymentTransaction: (...args: unknown[]) => mockBuildPaymentTransaction(...args),
-  buildUnsignedPaymentTransaction: (...args: unknown[]) => mockBuildUnsignedPaymentTransaction(...args),
+  buildUnsignedPaymentTransaction: (...args: unknown[]) =>
+    mockBuildUnsignedPaymentTransaction(...args),
   createHorizonServer: (...args: unknown[]) => mockCreateHorizonServer(...args),
 }));
 
@@ -41,7 +42,7 @@ function mockOkResponse(body: unknown, headers?: Record<string, string>): Respon
     text: async () => JSON.stringify(body),
     headers: {
       get: (name: string) => (headers && headers[name]) ?? null,
-      forEach: () => {},
+      forEach: jest.fn(),
     },
     body: null,
     bodyUsed: false,
@@ -49,7 +50,9 @@ function mockOkResponse(body: unknown, headers?: Record<string, string>): Respon
     statusText: 'OK',
     type: 'basic',
     url: '',
-    clone: function () { return this; },
+    clone: function () {
+      return this;
+    },
     blob: async () => new Blob(),
     arrayBuffer: async () => new ArrayBuffer(0),
     formData: async () => new FormData(),
@@ -62,7 +65,7 @@ function mock402Response(paymentRequired: unknown): Response {
     status: 402,
     json: async () => paymentRequired,
     text: async () => JSON.stringify(paymentRequired),
-    headers: { get: () => null, forEach: () => {} },
+    headers: { get: () => null, forEach: jest.fn() },
     body: {
       cancel: jest.fn(),
       getReader: () => ({
@@ -76,7 +79,9 @@ function mock402Response(paymentRequired: unknown): Response {
     statusText: 'Payment Required',
     type: 'basic',
     url: '',
-    clone: function () { return this; },
+    clone: function () {
+      return this;
+    },
     blob: async () => new Blob(),
     arrayBuffer: async () => new ArrayBuffer(0),
     formData: async () => new FormData(),
@@ -87,16 +92,20 @@ function mockErrorResponse(status: number, body: string): Response {
   return {
     ok: false,
     status,
-    json: async () => { throw new Error('Not JSON'); },
+    json: async () => {
+      throw new Error('Not JSON');
+    },
     text: async () => body,
-    headers: { get: () => null, forEach: () => {} },
+    headers: { get: () => null, forEach: jest.fn() },
     body: null,
     bodyUsed: false,
     redirected: false,
     statusText: 'Error',
     type: 'basic',
     url: '',
-    clone: function () { return this; },
+    clone: function () {
+      return this;
+    },
     blob: async () => new Blob(),
     arrayBuffer: async () => new ArrayBuffer(0),
     formData: async () => new FormData(),
@@ -125,10 +134,12 @@ describe('X402Client', () => {
 
   describe('call() — 200 path', () => {
     it('returns successful response on 200', async () => {
-      mockFetch.mockResolvedValueOnce(mockOkResponse({
-        id: 'chatcmpl-123',
-        choices: [{ message: { content: 'Hello!' } }],
-      }));
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          id: 'chatcmpl-123',
+          choices: [{ message: { content: 'Hello!' } }],
+        }),
+      );
 
       const client = new X402Client(defaultConfig);
       const result = await client.call(chatRequest);
@@ -174,10 +185,12 @@ describe('X402Client', () => {
       mockFetch.mockResolvedValueOnce(mockOkResponse({ successful: false }));
       mockFetch.mockResolvedValueOnce(mockOkResponse({ successful: true }));
       // Retry with payment proof: 200
-      mockFetch.mockResolvedValueOnce(mockOkResponse({
-        id: 'chatcmpl-456',
-        choices: [{ message: { content: 'Paid response' } }],
-      }));
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          id: 'chatcmpl-456',
+          choices: [{ message: { content: 'Paid response' } }],
+        }),
+      );
 
       const client = new X402Client(defaultConfig);
       const result = await client.call(chatRequest);
@@ -301,10 +314,12 @@ describe('X402Client', () => {
       });
       mockFetch.mockResolvedValueOnce(mockOkResponse({ successful: false }));
       mockFetch.mockResolvedValueOnce(mockOkResponse({ successful: true }));
-      mockFetch.mockResolvedValueOnce(mockOkResponse({
-        id: 'chatcmpl-ext',
-        choices: [{ message: { content: 'External signer response' } }],
-      }));
+      mockFetch.mockResolvedValueOnce(
+        mockOkResponse({
+          id: 'chatcmpl-ext',
+          choices: [{ message: { content: 'External signer response' } }],
+        }),
+      );
 
       const result = await client.call(chatRequest);
 
@@ -344,7 +359,9 @@ describe('X402Client', () => {
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         start(controller) {
-          controller.enqueue(encoder.encode('data: {"id":"1","choices":[{"delta":{"content":"Hello"}}]}\n\n'));
+          controller.enqueue(
+            encoder.encode('data: {"id":"1","choices":[{"delta":{"content":"Hello"}}]}\n\n'),
+          );
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         },
@@ -354,18 +371,23 @@ describe('X402Client', () => {
         ok: true,
         status: 200,
         headers: {
-          get: (name: string) => name === 'X-Payment-Receipt' ? '{"amount":"0","asset":"USDC"}' : null,
-          forEach: () => {},
+          get: (name: string) =>
+            name === 'X-Payment-Receipt' ? '{"amount":"0","asset":"USDC"}' : null,
+          forEach: jest.fn(),
         },
         body: stream,
-        json: async () => { throw new Error('Not JSON'); },
+        json: async () => {
+          throw new Error('Not JSON');
+        },
         text: async () => '',
         bodyUsed: false,
         redirected: false,
         statusText: 'OK',
         type: 'basic',
         url: '',
-        clone: function () { return this; },
+        clone: function () {
+          return this;
+        },
         blob: async () => new Blob(),
         arrayBuffer: async () => new ArrayBuffer(0),
         formData: async () => new FormData(),
@@ -408,7 +430,9 @@ describe('X402Client', () => {
       const encoder = new TextEncoder();
       const stream2 = new ReadableStream({
         start(controller) {
-          controller.enqueue(encoder.encode('data: {"id":"2","choices":[{"delta":{"content":"Paid stream"}}]}\n\n'));
+          controller.enqueue(
+            encoder.encode('data: {"id":"2","choices":[{"delta":{"content":"Paid stream"}}]}\n\n'),
+          );
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         },
@@ -418,18 +442,23 @@ describe('X402Client', () => {
         ok: true,
         status: 200,
         headers: {
-          get: (name: string) => name === 'X-Payment-Receipt' ? '{"amount":"100","asset":"USDC"}' : null,
-          forEach: () => {},
+          get: (name: string) =>
+            name === 'X-Payment-Receipt' ? '{"amount":"100","asset":"USDC"}' : null,
+          forEach: jest.fn(),
         },
         body: stream2,
-        json: async () => { throw new Error('Not JSON'); },
+        json: async () => {
+          throw new Error('Not JSON');
+        },
         text: async () => '',
         bodyUsed: false,
         redirected: false,
         statusText: 'OK',
         type: 'basic',
         url: '',
-        clone: function () { return this; },
+        clone: function () {
+          return this;
+        },
         blob: async () => new Blob(),
         arrayBuffer: async () => new ArrayBuffer(0),
         formData: async () => new FormData(),
