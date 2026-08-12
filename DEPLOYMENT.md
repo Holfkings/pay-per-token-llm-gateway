@@ -205,6 +205,122 @@ The gateway verifies the payment on-chain and proxies to the LLM:
 
 ---
 
+## Part 5: Mainnet Deployment
+
+> ⚠️ **Mainnet moves real USDC.** Everything below assumes you have real
+> funds, real accounts, and production-grade secrets. Test the full flow on
+> testnet first (Parts 1–4).
+
+### 5.1 Prerequisites
+
+- The `stellar` CLI (v20+) and `jq` — for contract deployment
+- A funded Stellar mainnet account (its secret key becomes the contract admin)
+- Real mainnet USDC (the gateway uses Circle's official USDC issuer:
+  `GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN`)
+- Strong secrets: `openssl rand -base64 32` for `JWT_SECRET`,
+  `POSTGRES_PASSWORD`, and `REDIS_PASSWORD`
+
+### 5.2 Deploy contracts to mainnet
+
+The gateway reads its contract IDs from environment variables, so the
+contracts must be deployed and initialized on mainnet before the gateway
+starts. `scripts/deploy-contracts.sh` handles build, deploy, `init`, and
+persisting the new IDs to `contracts/deployed-addresses.json`:
+
+```bash
+STELLAR_NETWORK=mainnet \
+STELLAR_SECRET_KEY=S... \
+USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN \
+MULTISIG_SIGNERS=G... \
+bash scripts/deploy-contracts.sh
+```
+
+Notes:
+
+- The script defaults the Soroban RPC and network passphrase per network
+  (mainnet → `https://soroban-mainnet.stellar.org` /
+  `Public Global Stellar Network ; September 2015`), and only needs
+  `STELLAR_SECRET_KEY` + `USDC_ISSUER` overridden.
+- **You must pass the mainnet `USDC_ISSUER` explicitly** — the script's
+  default is the testnet issuer.
+- The deploying account's public key becomes the admin of
+  `payment-verifier` and `credit-escrow`, and the default multisig signer.
+- After deployment, copy the mainnet IDs from
+  `contracts/deployed-addresses.json` into your environment
+  (`PAYMENT_VERIFIER_CONTRACT`, `CREDIT_ESCROW_CONTRACT`,
+  `MULTISIG_CONTRACT`).
+
+### 5.3 Docker Compose (mainnet)
+
+A hardened compose file is included:
+
+```bash
+docker compose -f infrastructure/docker/docker-compose.mainnet.yml up -d
+docker compose -f infrastructure/docker/docker-compose.mainnet.yml ps
+```
+
+Unlike the dev file, it **fails fast when secrets are missing**:
+
+| Variable                                                                     | Required | Purpose                                           |
+| ---------------------------------------------------------------------------- | -------- | ------------------------------------------------- |
+| `POSTGRES_PASSWORD`                                                          | ✅       | Postgres password (fail-fast)                     |
+| `REDIS_PASSWORD`                                                             | ✅       | Redis password (fail-fast)                        |
+| `JWT_SECRET`                                                                 | ✅       | Session signing (fail-fast)                       |
+| `CONTRACT_ADMIN_SECRET`                                                      | ✅       | On-chain payment recording (fail-fast)            |
+| `PAYMENT_VERIFIER_CONTRACT` / `CREDIT_ESCROW_CONTRACT` / `MULTISIG_CONTRACT` | ✅       | Mainnet contract IDs (fail-fast)                  |
+| `USDC_ISSUER`                                                                | –        | Defaults to Circle mainnet issuer                 |
+| `CORS_ORIGINS`                                                               | –        | Defaults to the Vercel dashboard                  |
+| `TRUST_PROXY`                                                                | –        | Set to your real proxy chain for IP rate limiting |
+
+It pins `STELLAR_NETWORK=mainnet`, adds `restart: unless-stopped`, and
+healthchecks every service. A full reference lives in `.env.mainnet.example`.
+
+### 5.4 Railway deployment
+
+Create a Railway project with PostgreSQL and Redis (same layout as Part 1),
+then set the gateway service variables:
+
+| Variable                                                                     | Mainnet value                                              |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `NODE_ENV`                                                                   | `production`                                               |
+| `STELLAR_NETWORK`                                                            | `mainnet`                                                  |
+| `USDC_ISSUER`                                                                | `GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN` |
+| `HORIZON_URL`                                                                | `https://horizon.stellar.org`                              |
+| `SOROBAN_RPC_URL`                                                            | `https://soroban-mainnet.stellar.org`                      |
+| `DATABASE_URL`                                                               | Railway Postgres URL                                       |
+| `REDIS_URL`                                                                  | Railway Redis URL                                          |
+| `JWT_SECRET`                                                                 | random 256-bit value                                       |
+| `CONTRACT_ADMIN_SECRET`                                                      | mainnet admin secret key                                   |
+| `PAYMENT_VERIFIER_CONTRACT` / `CREDIT_ESCROW_CONTRACT` / `MULTISIG_CONTRACT` | deployed mainnet IDs                                       |
+| `TRUST_PROXY`                                                                | `1` (Railway) — adjust if you add Cloudflare               |
+
+### 5.5 Security considerations
+
+- **Real assets at stake**: start with small limits, verify a single real
+  payment end-to-end, and monitor `X-Payment-Receipt` headers before
+  scaling.
+- **Secret management**: never put `CONTRACT_ADMIN_SECRET` or `JWT_SECRET`
+  in git. Use Railway's encrypted variables, a secret manager, or a
+  hardware-backed signer.
+- **Rate limiting**: wallet-based and IP-based limits apply; set
+  `TRUST_PROXY` correctly so the real client IP is seen.
+- **Contract admin**: keep the admin account's signing key offline when
+  possible; use the multisig contract for higher-value operations.
+- **Audit trail**: on-chain payment records are permanent. Test refunds on
+  a low-value account first.
+
+### 5.6 Pre-launch checklist
+
+- [ ] `cargo test` passes for all three contracts (see `contracts/`)
+- [ ] Mainnet contracts deployed and initialized; IDs in env
+- [ ] `STELLAR_NETWORK=mainnet` and mainnet `USDC_ISSUER` confirmed in the
+      running config (`GET /health` or admin config view)
+- [ ] Real USDC payment completes and receipt shows the real route
+- [ ] `docker compose ps` shows all services `healthy`
+- [ ] Secrets rotated, `.env.mainnet.example` never committed with values
+
+---
+
 ## Deployed Contract Addresses (Testnet)
 
 | Contract         | Address                                                    |
