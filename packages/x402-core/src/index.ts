@@ -13,7 +13,7 @@ import {
   StellarAddress,
   TxHash,
 } from '@x402/types';
-import { generateId, nowUnix, unitsToStroops } from '@x402/shared';
+import { generateId, nowUnix, unitsToStroops, type RedisLike } from '@x402/shared';
 import { logger } from '@x402/logger';
 
 // ── Quote Generation ─────────────────────────
@@ -390,14 +390,8 @@ export function generateReceipt(verification: PaymentVerification, quote: Quote)
 
 // ── Replay Protection ────────────────────────
 
-/**
- * Minimal interface for Redis operations needed by ReplayProtection.
- * ioredis satisfies this interface natively.
- */
-export interface RedisLike {
-  exists(key: string): Promise<number>;
-  set(key: string, value: string, ...args: string[]): Promise<string | null>;
-}
+// Re-export RedisLike from @x402/shared for backward compatibility.
+export type { RedisLike } from '@x402/shared';
 
 /**
  * Replay protection backed by Redis (when available) with in-memory fallback.
