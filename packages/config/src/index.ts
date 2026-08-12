@@ -3,7 +3,7 @@
 // ──────────────────────────────────────────────
 
 import type { StellarNetwork, PaymentAsset } from '@x402/types';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { config as loadDotEnv } from 'dotenv';
 
@@ -20,6 +20,33 @@ const envFilePath = resolve(process.cwd(), '.env');
 if (existsSync(envFilePath)) {
   loadDotEnv({ path: envFilePath });
 }
+
+// Load contract address defaults from the project's deployed-addresses.json
+// (maintained by `scripts/deploy-contracts.sh` and CI). The JSON file is the
+// single source of truth for contract IDs — env var overrides take precedence,
+// and hardcoded fallback IDs are the last resort when the file is missing.
+interface DeployedAddressesFile {
+  [network: string]: {
+    paymentVerifier?: string;
+    creditEscrow?: string;
+    multisig?: string;
+  };
+}
+
+function loadDeployedAddresses(): DeployedAddressesFile {
+  const addressesPath = resolve(process.cwd(), 'contracts', 'deployed-addresses.json');
+  try {
+    if (existsSync(addressesPath)) {
+      const raw = readFileSync(addressesPath, 'utf-8');
+      return JSON.parse(raw) as DeployedAddressesFile;
+    }
+  } catch {
+    // File is missing or malformed — fall back to hardcoded defaults.
+  }
+  return {};
+}
+
+const deployedAddresses = loadDeployedAddresses();
 
 export interface ContractAddresses {
   /** Payment verifier contract ID */
@@ -155,6 +182,7 @@ const INSECURE_JWT_SECRETS = [
   'change-me-to-a-random-64-byte-hex-string',
   'change-me-in-production',
   'dev-secret-change-in-production',
+  'change-this-to-a-random-secret-in-production',
 ];
 
 /**
@@ -314,12 +342,16 @@ export function loadConfig(): GatewayConfig {
     contracts: {
       paymentVerifier:
         process.env.PAYMENT_VERIFIER_CONTRACT ||
+        deployedAddresses[network]?.paymentVerifier ||
         'CDHGI3A2BXRC5AQDPWEEXUDQMDXTDZYBCLJZWSE5XZKMVEGJ5LLHA4CZ',
       creditEscrow:
         process.env.CREDIT_ESCROW_CONTRACT ||
+        deployedAddresses[network]?.creditEscrow ||
         'CCE7AWVXPO57W5KDONOPMHDV4S5UBUBMHNJVSAVPL7AZGMD4WQN6WVAP',
       multisig:
-        process.env.MULTISIG_CONTRACT || 'CDMBVMMNJVAJVAV3T2TAL2TAACGTKYUS45RXNLCYKYUC3VGHBI66NWAA',
+        process.env.MULTISIG_CONTRACT ||
+        deployedAddresses[network]?.multisig ||
+        'CDMBVMMNJVAJVAV3T2TAL2TAACGTKYUS45RXNLCYKYUC3VGHBI66NWAA',
     },
   };
 }

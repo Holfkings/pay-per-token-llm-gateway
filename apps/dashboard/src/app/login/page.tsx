@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Wallet, ArrowRight, Shield, Loader2, AlertTriangle } from 'lucide-react';
-import { requestChallenge, verifyChallenge, setSessionToken, setWalletAddress } from '@/lib/api';
+import { requestChallenge, verifyChallenge, setWalletAddress } from '@/lib/api';
 
 type WalletType = 'freighter' | 'xbull' | 'albedo';
 
@@ -59,12 +59,13 @@ export default function LoginPage() {
       // Step 3: Sign the challenge with the wallet
       const signature = await signChallenge(walletInfo.type, address, challenge);
 
-      // Step 4: Verify with the gateway
+      // Step 4: Verify with the gateway.
+      // The gateway sets an httpOnly cookie (x402-session) on this response
+      // — no need to store the token manually; the browser handles it.
       setStep('verifying');
-      const { token } = await verifyChallenge(challengeId, address, signature);
+      await verifyChallenge(challengeId, address, signature);
 
-      // Step 5: Store session and navigate
-      setSessionToken(token);
+      // Step 5: Store wallet address for UI display and navigate
       setWalletAddress(address);
 
       router.push('/');

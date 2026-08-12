@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Express, json } from 'express';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -24,6 +25,10 @@ async function bootstrap() {
 
   // Security headers (CSP, X-Frame-Options, HSTS, nosniff, etc.)
   app.use(helmet());
+
+  // Cookie parser — required for reading httpOnly session cookies set by
+  // the auth controller and sent automatically by the browser.
+  app.use(cookieParser());
 
   // Body size limit: 1 MB is enough for any reasonable chat completion request
   app.use(json({ limit: '1mb' }));

@@ -1,57 +1,39 @@
 /**
  * Gateway API client.
  * Calls the NestJS gateway directly (CORS is configured for dashboard origin).
+ *
+ * The session token is managed via an httpOnly cookie set by the gateway
+ * at /auth/verify. The browser automatically sends it on every request
+ * when `credentials: 'include'` is set — no localStorage token needed.
  */
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3000';
 const BASE = `${GATEWAY_URL}/api/v1`;
 
-/** Get the stored session token */
-function getSessionToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('x402-session-token');
-}
-
-/** Store the session token */
-export function setSessionToken(token: string): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('x402-session-token', token);
-  }
-}
-
-/** Clear the session token */
-export function clearSessionToken(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('x402-session-token');
-    localStorage.removeItem('x402-wallet-address');
-  }
-}
-
-/** Store the connected wallet address */
+/** Store the connected wallet address (UI display only, not a secret). */
 export function setWalletAddress(address: string): void {
   if (typeof window !== 'undefined') {
     localStorage.setItem('x402-wallet-address', address);
   }
 }
 
-/** Get the stored wallet address */
+/** Get the stored wallet address (UI display only). */
 export function getWalletAddress(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('x402-wallet-address');
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = getSessionToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options?.headers as Record<string, string>) || {}),
   };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers,
+    // Include httpOnly cookies (x402-session) in cross-origin requests.
+    // The gateway CORS config must have `credentials: true` for this to work.
+    credentials: 'include',
   });
 
   if (!res.ok) {
@@ -70,7 +52,8 @@ export interface ChallengeResponse {
 }
 
 export interface VerifyResponse {
-  token: string;
+  verified: boolean;
+  address: string;
 }
 
 export interface SessionResponse {
@@ -90,6 +73,8 @@ export function verifyChallenge(
   address: string,
   signature: string,
 ): Promise<VerifyResponse> {
+  // The gateway sets an httpOnly cookie (x402-session) on this response.
+  // No need to store the token manually — the browser handles it.
   return request<VerifyResponse>('/auth/verify', {
     method: 'POST',
     body: JSON.stringify({ challengeId, address, signature }),
