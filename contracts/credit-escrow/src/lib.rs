@@ -530,13 +530,34 @@ mod test {
         let env = Env::default();
         let (_admin, user, asset, client) = setup(&env);
 
+        // Deposit enough to cover 150 charges (sum of 1..150 × 1M = ~11.3B).
         StellarAssetClient::new(&env, &asset)
             .mock_all_auths()
-            .mint(&user, &10_000_000_000i128);
-        client.mock_all_auths().deposit(&user, &5_000_000_000i128);
+            .mint(&user, &15_000_000_000i128);
+        client.mock_all_auths().deposit(&user, &12_000_000_000i128);
 
+        // Pre-computed unique quote ids — we need 150 distinct ids so
+        // idempotency doesn't fire (same quote → "already charged" panic).
+        #[rustfmt::skip]
+        let labels: [&str; 150] = [
+            "q000","q001","q002","q003","q004","q005","q006","q007","q008","q009",
+            "q010","q011","q012","q013","q014","q015","q016","q017","q018","q019",
+            "q020","q021","q022","q023","q024","q025","q026","q027","q028","q029",
+            "q030","q031","q032","q033","q034","q035","q036","q037","q038","q039",
+            "q040","q041","q042","q043","q044","q045","q046","q047","q048","q049",
+            "q050","q051","q052","q053","q054","q055","q056","q057","q058","q059",
+            "q060","q061","q062","q063","q064","q065","q066","q067","q068","q069",
+            "q070","q071","q072","q073","q074","q075","q076","q077","q078","q079",
+            "q080","q081","q082","q083","q084","q085","q086","q087","q088","q089",
+            "q090","q091","q092","q093","q094","q095","q096","q097","q098","q099",
+            "q100","q101","q102","q103","q104","q105","q106","q107","q108","q109",
+            "q110","q111","q112","q113","q114","q115","q116","q117","q118","q119",
+            "q120","q121","q122","q123","q124","q125","q126","q127","q128","q129",
+            "q130","q131","q132","q133","q134","q135","q136","q137","q138","q139",
+            "q140","q141","q142","q143","q144","q145","q146","q147","q148","q149",
+        ];
         for i in 0..150u32 {
-            let quote = String::from_str(&env, &["q-clamp-000", "q-clamp-001", "q-clamp-002"][i as usize % 3]);
+            let quote = String::from_str(&env, labels[i as usize]);
             client.mock_all_auths().charge(&user, &((i + 1) as i128 * 1_000_000), &quote);
         }
 
@@ -1078,9 +1099,6 @@ mod test {
 
         // Step 3: Refund 100 (surplus) — contract holds 400, user balance 200,
         //         revenue 200. The refund transferred 100 tokens out.
-        StellarAssetClient::new(&env, &asset)
-            .mock_all_auths()
-            .mint(&contract_id, &500_000_000i128);
         client.mock_all_auths().refund(&user, &100_000_000i128, &q1);
 
         assert_eq!(token_client.balance(&contract_id), 400_000_000i128);
@@ -1183,9 +1201,6 @@ mod test {
         // Now refund 200 from the remaining uncharged balance (400 - 200 = 200
         // remaining). The contract transfers 200 tokens out. User balance
         // becomes 200, revenue stays 600, contract holds 800.
-        StellarAssetClient::new(&env, &asset)
-            .mock_all_auths()
-            .mint(&contract_id, &1_000_000_000i128);
         client.mock_all_auths().refund(&user, &200_000_000i128, &q);
 
         assert_eq!(token_client.balance(&contract_id), 800_000_000i128);
