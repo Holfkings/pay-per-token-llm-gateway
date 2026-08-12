@@ -9,22 +9,9 @@
  * Requires `CONTRACT_ADMIN_SECRET` and `ESCROW_SETTLEMENT_ENABLED=true`.
  */
 
-import { Address, xdr, Keypair } from '@stellar/stellar-sdk';
+import { xdr, Keypair } from '@stellar/stellar-sdk';
 import { logger } from '@x402/logger';
-
-/** Convert a Stellar account address to an Address ScVal. */
-function accountAddressToScVal(address: string): xdr.ScVal {
-  return Address.fromString(address).toScVal();
-}
-
-/** Convert a non-negative stroop amount to a signed 128-bit ScVal. */
-function amountToScVal(amount: string): xdr.ScVal {
-  const value = BigInt(amount);
-  if (value < 0n) throw new Error('Amount must be non-negative');
-  const lo = xdr.Uint64.fromString(value.toString());
-  const hi = xdr.Int64.fromString('0');
-  return xdr.ScVal.scvI128(new xdr.Int128Parts({ lo, hi }));
-}
+import { accountAddressToScVal, amountToScVal } from './soroban-utils';
 
 // ── Public API ───────────────────────────────
 
