@@ -16,7 +16,7 @@ jest.mock('@x402/wallet', () => ({
   buildPaymentTransaction: (...args: unknown[]) => mockBuildPaymentTransaction(...args),
   buildUnsignedPaymentTransaction: (...args: unknown[]) =>
     mockBuildUnsignedPaymentTransaction(...args),
-  createHorizonServer: (...args: unknown[]) => mockCreateHorizonServer(...args),
+  createHorizonServer: (...args: unknown[]) => mockCreateHorizonServer(...(args as [])),
 }));
 
 // ── Helpers ──────────────────────────────────
@@ -53,7 +53,7 @@ function mockOkResponse(body: unknown, headers?: Record<string, string>): Respon
     clone: function () {
       return this;
     },
-    blob: async () => new Blob(),
+    blob: async () => new Blob([]),
     arrayBuffer: async () => new ArrayBuffer(0),
     formData: async () => new FormData(),
   } as unknown as Response;
@@ -82,7 +82,7 @@ function mock402Response(paymentRequired: unknown): Response {
     clone: function () {
       return this;
     },
-    blob: async () => new Blob(),
+    blob: async () => new Blob([]),
     arrayBuffer: async () => new ArrayBuffer(0),
     formData: async () => new FormData(),
   } as unknown as Response;
@@ -106,7 +106,7 @@ function mockErrorResponse(status: number, body: string): Response {
     clone: function () {
       return this;
     },
-    blob: async () => new Blob(),
+    blob: async () => new Blob([]),
     arrayBuffer: async () => new ArrayBuffer(0),
     formData: async () => new FormData(),
   } as unknown as Response;
@@ -146,7 +146,7 @@ describe('X402Client', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.response.id).toBe('chatcmpl-123');
+        expect(result.response!.id).toBe('chatcmpl-123');
       }
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
@@ -197,7 +197,7 @@ describe('X402Client', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.response.id).toBe('chatcmpl-456');
+        expect(result.response!.id).toBe('chatcmpl-456');
       }
       expect(mockBuildPaymentTransaction).toHaveBeenCalledTimes(1);
     });
@@ -388,7 +388,7 @@ describe('X402Client', () => {
         clone: function () {
           return this;
         },
-        blob: async () => new Blob(),
+        blob: async () => new Blob([]),
         arrayBuffer: async () => new ArrayBuffer(0),
         formData: async () => new FormData(),
       } as unknown as Response);
@@ -399,7 +399,7 @@ describe('X402Client', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         const chunks: unknown[] = [];
-        for await (const chunk of result.stream) {
+        for await (const chunk of result.stream!) {
           chunks.push(chunk);
         }
         expect(chunks).toHaveLength(1);
@@ -459,7 +459,7 @@ describe('X402Client', () => {
         clone: function () {
           return this;
         },
-        blob: async () => new Blob(),
+        blob: async () => new Blob([]),
         arrayBuffer: async () => new ArrayBuffer(0),
         formData: async () => new FormData(),
       } as unknown as Response);
@@ -470,7 +470,7 @@ describe('X402Client', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         const chunks: unknown[] = [];
-        for await (const chunk of result.stream) {
+        for await (const chunk of result.stream!) {
           chunks.push(chunk);
         }
         expect(chunks).toHaveLength(1);
