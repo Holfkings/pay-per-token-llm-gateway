@@ -42,9 +42,19 @@ All notable changes to the x402 LLM Gateway project.
 - **M4:** RateLimitGuard added to PaymentsController public status endpoint
 - **C1:** Escrow settlement wired into proxy controller (charge + auto-refund surplus)
 
+### Fixed (from audit — Phase 2)
+
+- **M6:** DNS rebinding protection added at proxy-forward time (`813fed7`)
+- **M10:** Email notification channel wired with nodemailer (`09e4706`)
+- **L9:** Jest unit test scaffolding added for dashboard pages and components (`05e10c9`)
+- **M3:** Credit-escrow invariant tests added for balance equation (`b49a2d1`)
+- **L4:** CHANGELOG.md, git tags, and release cadence established
+- **L2:** `contracts/deployed-addresses.json` committed and tracked
+
 ### Known Limitations
 
-- Email notification handler is a placeholder (not yet wired to SMTP)
 - Circuit breaker is in-memory only (not shared across gateway instances)
-- Dashboard and SDK lack dedicated test suites
-- DNS rebinding TOCTOU on upstream URLs (config-time validation only)
+- SDK unit tests remain at 0% coverage (targeted as [#45](https://github.com/Pay-Per-Token-LLM-Gateway/pay-per-token-llm-gateway/issues/45))
+- Escrow settlement is partially wired (credit-escrow contract exists but gateway settlement path is incomplete — [#25](https://github.com/Pay-Per-Token-LLM-Gateway/pay-per-token-llm-gateway/issues/25))
+- Streaming receipt headers are not yet set (`X-Payment-Receipt` empty on SSE — [#29](https://github.com/Pay-Per-Token-LLM-Gateway/pay-per-token-llm-gateway/issues/29))
+- API key / session tables in Prisma schema are dead code — [#47](https://github.com/Pay-Per-Token-LLM-Gateway/pay-per-token-llm-gateway/issues/47)

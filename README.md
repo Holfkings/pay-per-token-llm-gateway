@@ -215,18 +215,17 @@ x402-llm-gateway/
 
 ### Database Schema
 
-| Model            | Purpose                                            |
-| ---------------- | -------------------------------------------------- |
-| `Provider`       | LLM provider/merchant with Stellar wallet          |
-| `Route`          | Protected endpoint → upstream mapping with pricing |
-| `Payment`        | Payment records with on-chain verification data    |
-| `Wallet`         | Stellar wallet addresses                           |
-| `PrepaidCredit`  | Escrow balances for credit-based billing (v2)      |
-| `ApiKey`         | Provider API keys for dashboard access             |
-| `Session`        | Auth sessions with JWT tokens                      |
-| `Notification`   | Delivered notification records                     |
-| `AnalyticsEvent` | Request and payment events for analytics           |
-| `AuditLog`       | Immutable audit trail of all operations            |
+| Model           | Purpose                                            |
+| --------------- | -------------------------------------------------- |
+| `Provider`      | LLM provider/merchant with Stellar wallet          |
+| `Route`         | Protected endpoint → upstream mapping with pricing |
+| `Payment`       | Payment records with on-chain verification data    |
+| `Wallet`        | Stellar wallet addresses                           |
+| `PrepaidCredit` | Escrow balances for credit-based billing (v2)      |
+
+| `Notification` | Delivered notification records |
+| `AnalyticsEvent` | Request and payment events for analytics |
+| `AuditLog` | Immutable audit trail of all operations |
 
 ---
 

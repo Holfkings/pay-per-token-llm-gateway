@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@x402/database';
-import { getConfig } from '@x402/config';
 import { logger } from '@x402/logger';
 
 @Injectable()
