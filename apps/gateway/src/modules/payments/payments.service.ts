@@ -181,7 +181,7 @@ export class PaymentsService {
     ]);
 
     // Serialize BigInt amounts to strings for JSON response
-    const serialized: PaymentResponse[] = payments.map((p) => ({
+    const serialized: PaymentResponse[] = payments.map((p: PaymentRecord) => ({
       id: p.id,
       quoteId: p.quoteId,
       txHash: p.txHash,
