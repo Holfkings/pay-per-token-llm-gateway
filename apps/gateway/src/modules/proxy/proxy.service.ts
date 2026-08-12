@@ -110,6 +110,8 @@ class CircuitBreaker {
 
   private async checkCircuitRedis(hostname: string): Promise<void> {
     const key = CircuitBreaker.KEY_PREFIX + hostname;
+    const redis = this.redis;
+    if (!redis) return;
 
     try {
       // Atomic Lua script: check if circuit is open, allow half-open probe.
@@ -133,7 +135,7 @@ class CircuitBreaker {
         return 'ok'
       `;
 
-      const result = (await this.redis!.eval(
+      const result = (await redis.eval(
         script,
         1,
         key,
@@ -173,6 +175,9 @@ class CircuitBreaker {
   }
 
   private async recordFailureRedis(hostname: string): Promise<void> {
+    const redis = this.redis;
+    if (!redis) return;
+
     try {
       const key = CircuitBreaker.KEY_PREFIX + hostname;
       const failuresKey = key + ':failures';
@@ -190,7 +195,7 @@ class CircuitBreaker {
         return 'closed'
       `;
 
-      const result = (await this.redis!.eval(
+      const result = (await redis.eval(
         script,
         2,
         failuresKey,

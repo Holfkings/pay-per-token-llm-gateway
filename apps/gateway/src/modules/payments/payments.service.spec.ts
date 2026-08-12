@@ -119,10 +119,11 @@ describe('PaymentsService', () => {
       const receipt = await service.confirmPayment('quote-1', verification);
 
       expect(receipt).not.toBeNull();
-      expect(receipt!.status).toBe('confirmed');
-      expect(receipt!.txHash).toBe(verification.txHash);
-      expect(receipt!.payerAddress).toBe(verification.payerAddress);
-      expect(receipt!.amount).toBe(verification.amount);
+      if (!receipt) throw new Error('unreachable: receipt is null after not.toBeNull check');
+      expect(receipt.status).toBe('confirmed');
+      expect(receipt.txHash).toBe(verification.txHash);
+      expect(receipt.payerAddress).toBe(verification.payerAddress);
+      expect(receipt.amount).toBe(verification.amount);
       // The claim only touches un-consumed rows — where includes txHash: null.
       expect(mockPrisma.payment.updateMany).toHaveBeenCalledWith({
         where: { quoteId: 'quote-1', txHash: null },
