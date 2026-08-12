@@ -87,7 +87,7 @@ export class AuthController {
       maxAge: config.security.sessionDuration * 1000,
     });
 
-    return { verified: true, address };
+    return { verified: true, address, token: result.token };
   }
 
   /**
@@ -96,15 +96,40 @@ export class AuthController {
    *
    * Reads the token from the httpOnly cookie (primary) or the
    * Authorization header (fallback for backward compatibility).
+   *
+   * When a valid Authorization header token is used (legacy localStorage
+   * client), the session cookie is set on this response so subsequent
+   * requests use the cookie — this provides seamless migration from
+   * localStorage to httpOnly cookie auth.
    */
   @Get('session')
   @ApiOperation({ summary: 'Validate current session' })
-  async validateSession(@Req() req: Request, @Headers('authorization') authHeader?: string) {
+  async validateSession(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Headers('authorization') authHeader?: string,
+  ) {
     const token = this.extractTokenFromRequest(req, authHeader);
     const result = await this.authService.validateToken(token);
 
     if (!result.valid) {
       throw new UnauthorizedException(result.error);
+    }
+
+    // Migration: if the client authenticated via Authorization header
+    // (legacy localStorage flow), set the httpOnly cookie now so future
+    // requests use the cookie instead.
+    const hasCookie = !!req.cookies?.['x402-session'];
+    if (!hasCookie) {
+      const config = getConfig();
+      const isProduction = config.nodeEnv === 'production';
+      res.cookie('x402-session', token, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        path: '/',
+        maxAge: config.security.sessionDuration * 1000,
+      });
     }
 
     return {

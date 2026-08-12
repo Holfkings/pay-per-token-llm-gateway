@@ -27,12 +27,21 @@ export class RedisModule implements OnModuleInit {
   constructor(@Inject('REDIS') private readonly redis: Redis) {}
 
   async onModuleInit() {
+    const config = getConfig();
+    const isProduction = config.nodeEnv === 'production';
+
     try {
       await this.redis.ping();
       this.logger.log('✅ Redis connected');
     } catch (error) {
-      this.logger.error('❌ Redis connection failed', String(error));
-      throw error;
+      const message =
+        `Redis connection failed: ${String(error)}. ` +
+        (isProduction
+          ? 'Redis is REQUIRED in production — the gateway cannot start without it. ' +
+            'Check that REDIS_URL is correct and the Redis server is reachable.'
+          : 'Start a Redis server (docker compose up -d redis) or set REDIS_URL.');
+      this.logger.error(message);
+      throw new Error(message);
     }
   }
 }

@@ -3,6 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { validateSession, endSession, getWalletAddress } from './api';
 
+/**
+ * Shared module-level auth state so data-fetching hooks can check
+ * authentication status without being inside a React tree. Updated by
+ * useAuth() on every mount.
+ */
+let globalIsConnected = false;
+export function isAuthenticated(): boolean {
+  return globalIsConnected;
+}
+
 export function useAuth() {
   const [address, setAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -11,8 +21,10 @@ export function useAuth() {
     try {
       const result = await validateSession();
       setAddress(result.address);
+      globalIsConnected = true;
     } catch {
       setAddress(null);
+      globalIsConnected = false;
     } finally {
       setLoading(false);
     }
@@ -23,7 +35,8 @@ export function useAuth() {
     const stored = getWalletAddress();
     if (stored) setAddress(stored);
 
-    // Then validate with the gateway
+    // Then validate with the gateway (this also triggers the legacy
+    // localStorage token migration if one exists).
     checkSession();
   }, [checkSession]);
 
@@ -35,6 +48,7 @@ export function useAuth() {
       // Even if the API call fails, clear local state
     }
     setAddress(null);
+    globalIsConnected = false;
     if (typeof window !== 'undefined') {
       localStorage.removeItem('x402-wallet-address');
     }

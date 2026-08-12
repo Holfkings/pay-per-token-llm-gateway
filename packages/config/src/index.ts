@@ -223,6 +223,30 @@ export function validateEnv(): void {
     const messages = missing.map((r) => `  • ${r.message}`).join('\n');
     throw new Error(`Missing required environment variables:\n${messages}`);
   }
+
+  // Redis is mandatory in production. The default dev URL (localhost:6379)
+  // and the Railway auto-provision template (${{Redis.REDIS_URL}}) are
+  // rejected — the operator must set a real URL. The ioredis constructor
+  // in RedisModule will also fail at startup if the server is unreachable.
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && process.env.REDIS_URL) {
+    const redisUrl = process.env.REDIS_URL;
+    // Reject unexpanded Railway template references (they contain "{{")
+    if (redisUrl.includes('{{')) {
+      throw new Error(
+        'REDIS_URL contains an unexpanded template reference. ' +
+          'Ensure Railway database references are resolved before deploying.',
+      );
+    }
+    // Reject the development default
+    if (redisUrl === 'redis://localhost:6379' || redisUrl === 'redis://127.0.0.1:6379') {
+      throw new Error(
+        'REDIS_URL is set to the development default (localhost:6379). ' +
+          'In production, you must configure a real Redis server. ' +
+          'Set REDIS_URL to your production Redis connection string.',
+      );
+    }
+  }
 }
 
 /**

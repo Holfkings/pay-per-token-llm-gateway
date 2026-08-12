@@ -1,6 +1,13 @@
 /** @jest-environment jsdom */
 
-import { setWalletAddress, getWalletAddress } from './api';
+import { setSessionToken, setWalletAddress, getWalletAddress } from './api';
+
+describe('in-memory session token', () => {
+  it('stores a token without touching localStorage', () => {
+    setSessionToken('test-token-123');
+    expect(localStorage.getItem('x402-session-token')).toBeNull();
+  });
+});
 
 describe('wallet address management', () => {
   beforeEach(() => {

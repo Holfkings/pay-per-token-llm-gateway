@@ -172,5 +172,41 @@ describe('config security hardening', () => {
 
       expect(() => validateEnv()).not.toThrow();
     });
+
+    it('rejects development localhost Redis URL in production', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_SECRET = 'a-real-random-256-bit-secret';
+      process.env.DATABASE_URL = 'postgres://db.example.com:5432/x402';
+      process.env.REDIS_URL = 'redis://localhost:6379';
+
+      expect(() => validateEnv()).toThrow(/REDIS_URL/);
+    });
+
+    it('rejects unexpanded Railway template references in Redis URL', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_SECRET = 'a-real-random-256-bit-secret';
+      process.env.DATABASE_URL = 'postgres://db.example.com:5432/x402';
+      process.env.REDIS_URL = '${{Redis.REDIS_URL}}';
+
+      expect(() => validateEnv()).toThrow(/REDIS_URL/);
+    });
+
+    it('accepts a real Redis URL in production', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_SECRET = 'a-real-random-256-bit-secret';
+      process.env.DATABASE_URL = 'postgres://db.example.com:5432/x402';
+      process.env.REDIS_URL = 'redis://redis.example.com:6379';
+
+      expect(() => validateEnv()).not.toThrow();
+    });
+
+    it('accepts localhost Redis URL in development', () => {
+      process.env.NODE_ENV = 'development';
+      process.env.JWT_SECRET = 'a-real-random-256-bit-secret';
+      process.env.DATABASE_URL = 'postgres://localhost:5432/db';
+      process.env.REDIS_URL = 'redis://localhost:6379';
+
+      expect(() => validateEnv()).not.toThrow();
+    });
   });
 });

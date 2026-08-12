@@ -2,12 +2,26 @@
  * Gateway API client.
  * Calls the NestJS gateway directly (CORS is configured for dashboard origin).
  *
- * The session token is managed via an httpOnly cookie set by the gateway
- * at /auth/verify. The browser automatically sends it on every request
- * when `credentials: 'include'` is set — no localStorage token needed.
+ * Auth strategy (defense in depth):
+ *   1. httpOnly cookie — primary, works same-origin (localhost dev,
+ *      Vercel + Railway production with HTTPS). Set by /auth/verify.
+ *   2. Authorization header — fallback for cross-origin deployments
+ *      where cookies can't be sent (Vercel HTTPS → localhost HTTP).
+ *      Token is stored in memory only, never localStorage (XSS-safe).
  */
 const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:3000';
 const BASE = `${GATEWAY_URL}/api/v1`;
+
+/**
+ * In-memory session token for cross-origin fallback.
+ * Cleared on page refresh — not persistent, not accessible to XSS.
+ */
+let sessionToken: string | null = null;
+
+/** Store the session token in memory (cross-origin fallback). */
+export function setSessionToken(token: string): void {
+  sessionToken = token;
+}
 
 /** Store the connected wallet address (UI display only, not a secret). */
 export function setWalletAddress(address: string): void {
@@ -22,17 +36,39 @@ export function getWalletAddress(): string | null {
   return localStorage.getItem('x402-wallet-address');
 }
 
+/**
+ * Check for a legacy localStorage session token from before the httpOnly
+ * cookie migration. If found, it is consumed once for migration then removed.
+ */
+function consumeLegacyToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  const token = localStorage.getItem('x402-session-token');
+  if (token) {
+    localStorage.removeItem('x402-session-token');
+    sessionToken = token;
+  }
+  return token;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options?.headers as Record<string, string>) || {}),
   };
 
+  // Migration: consume any legacy localStorage token into in-memory store.
+  consumeLegacyToken();
+
+  // Cross-origin fallback: send the token as Authorization header.
+  // The gateway checks the httpOnly cookie first (primary); this header
+  // covers deployments where cookies can't be sent cross-origin.
+  if (sessionToken && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${sessionToken}`;
+  }
+
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers,
-    // Include httpOnly cookies (x402-session) in cross-origin requests.
-    // The gateway CORS config must have `credentials: true` for this to work.
     credentials: 'include',
   });
 
@@ -54,6 +90,8 @@ export interface ChallengeResponse {
 export interface VerifyResponse {
   verified: boolean;
   address: string;
+  /** JWT session token (for cross-origin Authorization header fallback). */
+  token?: string;
 }
 
 export interface SessionResponse {
@@ -73,8 +111,8 @@ export function verifyChallenge(
   address: string,
   signature: string,
 ): Promise<VerifyResponse> {
-  // The gateway sets an httpOnly cookie (x402-session) on this response.
-  // No need to store the token manually — the browser handles it.
+  // The gateway sets an httpOnly cookie (x402-session) and also returns
+  // the token for in-memory cross-origin fallback.
   return request<VerifyResponse>('/auth/verify', {
     method: 'POST',
     body: JSON.stringify({ challengeId, address, signature }),
